@@ -327,6 +327,8 @@
 ; 14.8.: punkt 3 ka tehtud. Simus töötab aga püüton vaid susiseb - vist on vigane. Neeme pusib...
 ; 17.8.: multikulti viga fiksed. Versioon ikka sama. Kirjutab eelmise vigase lihtsalt üle !
 ; 24.8.: saadetud 1W ID-d tuleb salvestada ka!
+; 1.9.: Tarkuse päeval sain targemaks - discovery käivitamise lipp oli korduvkasutatav ja solgiti ää. Fiksed. Ver= endine.
+; 2.9.: voiks siis 277=0 puhul reseti keelata. Keelame! Ver= endine.
 ;===============================================================================
 	include "P18F46K80.inc"  	
   	LIST   P=PIC18F46K80
@@ -3675,6 +3677,7 @@ chk_alg8_1:		movff	Puhver+.1,WREG			; kui dc1a ja 699=0, tee discovery
 				bsf		special0				; märgime, et oli erikäsk 0
 				goto	chk_algok
 ;2. kirjutades 999 sisse koodi feed võiks käivituda reset1 hoolimata 276 sisust ja kesta vastavalt 277 poolt määratule.
+; voiks siis 277=0 puhul reseti keelata
 chk_alg8_2:		movff	Puhver+.1,WREG			; kui feed, tee reset1
 				sublw	0x06
 				btfss	ZERO
@@ -4962,7 +4965,15 @@ ds1820luup2:	movlw	0x00
 				bsf		INTCON,PEIE			
 				bsf		INTCON,GIE
 				goto	aab
-special_cmd1:	bsf		reset1pulseon			; märgime ära
+special_cmd1:	movff	Register277+.0,WREG		; voiks siis 277=0 puhul reseti keelata
+				addlw	.0
+				btfss	ZERO
+				goto	special_cmd1a
+				movff	Register277+.1,WREG
+				addlw	.0
+				btfsc	ZERO
+				goto	aab						; 277=0 => ei tee midagi !
+special_cmd1a:	bsf		reset1pulseon			; märgime ära
 				bcf		n_reset1				; ja nüüd annab saapaga ... ! -> inversioonis
 				movff	Register276,WREG		; taasta side kadumise viiteaeg
 				movwf	reset1dlytmrH
@@ -6315,7 +6326,7 @@ SetupFSR:                                 		; Setup FSR0L, TEMP1(byte offset), a
 decrtmrs:
 T1intr1end:		btfsc	reset1pulseon			; reseti 1 pulss juba aktiivne ?
 				goto	T1intr1end1				; jah
-				movf	reset1dlytmrH,W			; kas side viiteaeg anti = 0 ?
+				movf	reset1dlytmrH,W			; kas side viiteaeg anti = 0 (Register276) ?
 				addlw	.0
 				btfss	ZERO
 				goto	sv9						; eip
@@ -6323,7 +6334,8 @@ T1intr1end:		btfsc	reset1pulseon			; reseti 1 pulss juba aktiivne ?
 				addlw	.0
 				btfss	ZERO
 				goto	sv9						; eip
-				goto	R1zero; sv10					; jah, siis on aeg oodatud !
+				goto	R1zero					; jah, siis on aeg oodatud !  Pulssi ei tekitata !
+
 sv9:			decfsz	reset1dlytmrL			; ootame kannatlikult, ehk side taastub
 				goto	T1intr2					
 				movf	reset1dlytmrH,W			; HIGH juba on  ?
@@ -6334,7 +6346,7 @@ sv9:			decfsz	reset1dlytmrL			; ootame kannatlikult, ehk side taastub
 				decf	reset1dlytmrL,F
 				goto	T1intr2
 sv10:			movff	Register277,WREG		; piisavalt InterNetita oldud: 
-				movwf	reset1pulsetmrH			; laeme pulsi kestuse
+				movwf	reset1pulsetmrH			; laeme pulsi kestuse (Register277)
 				addlw	.0
 				btfss	ZERO					; nulline kestus tähendab, et pulssi ei tekitatagi !
 				goto	R1notzero
@@ -6368,7 +6380,7 @@ sv11:			bsf		n_reset1				; aitab kah pexmisest... -> inversioonis
 ;***********************
 T1intr2:		btfsc	reset2pulseon			; reseti 2 pulss juba aktiivne ?
 				goto	T2intr1end1				; jah
-				movf	reset2dlytmrH,W			; kas side viiteaeg anti = 0 ?
+				movf	reset2dlytmrH,W			; kas reseti viiteaeg anti = 0 ?
 				addlw	.0
 				btfss	ZERO
 				goto	sv29					; eip
@@ -6376,7 +6388,7 @@ T1intr2:		btfsc	reset2pulseon			; reseti 2 pulss juba aktiivne ?
 				addlw	.0
 				btfss	ZERO
 				goto	sv29					; eip
-				goto	R2zero;sv20					; jah, siis on aeg oodatud !
+				goto	R2zero					; jah, siis on aeg oodatud ! Pulssi ei  tekita !
 sv29:			decfsz	reset2dlytmrL			; ootame kannatlikult, ehk side taastub
 				return					
 				movf	reset2dlytmrH,W			; HIGH juba on  ?
@@ -6386,7 +6398,7 @@ sv29:			decfsz	reset2dlytmrL			; ootame kannatlikult, ehk side taastub
 				decf	reset2dlytmrH,F
 				decf	reset2dlytmrL,F
 				return
-sv20:			movff	Register279,WREG		; piisavalt InterNetita oldud: 
+sv20:			movff	Register279,WREG		; piisavalt oodatud: 
 				movwf	reset2pulsetmrH			; laeme pulsi kestuse
 				addlw	.0
 				btfss	ZERO					; nulline kestus tähendab, et pulssi ei tekitatagi !

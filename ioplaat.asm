@@ -208,6 +208,8 @@
 ; 6.10.: DS2438 aadressi rehkendamine vale - fiksed nüüd.
 ; 17.10.: katckestuste prioriteedi tõttu tuli ka discovery ajal katckestus ja asi tuxis. noints lipuga määrame kas 1W rutiinis katckestusi lubada või mitte. Versioon F. Ehk lõplik...
 ; 18.10.: 1W andurite loendamise piiri viga - oleks lugenud 18-ni. Fixed. Ver.: 0x10
+; 19.10.: reset_pwm ei lülitanud TMR0 välja. Testida ! Ver 0x11. 
+; 20.10.: TMR0 siiski pidi käima sest muidu ei toimi 1-impulsid. Stardil Keelasin PEIE, stardib stabiilsemalt küll! (v.: 0x02 0x11)
 ;===============================================================================
 ;=============================================================================== 
 ;*********************** Raudvärk **********************************************
@@ -2069,11 +2071,14 @@ SerInt:
 				banksel	.0
 				andlw	.6						; Viga vastuvõtul? Maskeeri tarbetud staatuse bitid
 				btfss	ZERO
-				goto	reset_ser2				; oli, alusta uuesti
+	goto e
+;				goto	reset_ser2				; oli, alusta uuesti
+	call c
 modbus_rcv:		movf	bytecnt,W				; kontrolli puhvri piire
 				sublw	RSBufLen-.1
 				btfss	CARRY
-				goto	reset_ser2				; liiga pikk mess või miskit sassis, reset!
+;				goto	reset_ser2				; liiga pikk mess või miskit sassis, reset!
+	goto d
 				bsf		SerialTimerOn	
 				banksel	RCREG1
 				movf	RCREG1,W
@@ -2154,18 +2159,78 @@ modb_r3:		movf	INDF0,W
 				movf	_RS485chk,W				; kontroll
 				subwf	INDF0,W
 				btfss	ZERO
-				goto	reset_ser2				; viga
+;				goto	reset_ser2				; viga
+	goto a
 				incf	FSR0L,F
 				movf	_RS485chkH,W			; kontroll
 				subwf	INDF0,W
 				btfss	ZERO
-				goto	reset_ser2				; viga, eksiteerib via reset_ser
+	goto a
+;				goto	reset_ser2				; viga, eksiteerib via reset_ser
 				bsf		cmd_ok					; aga märgi ära, et pakett oli ok
 				bcf		SerialTimerOn			; taimer seisma
 				banksel	PIE1
 				bcf		PIE1,RC1IE				; enne uut käsku vastuvõtu ei võta kuni senine täidetud
 				banksel	.0
 				return
+a:; bsf Dout0
+	nop
+	nop
+	nop
+	nop
+;	bcf	Dout0
+	goto	reset_ser2				; viga
+b:; bsf Dout1
+	nop
+	nop
+	nop
+	nop
+;	bcf	Dout1
+	nop
+	nop
+	nop
+	nop
+	movff	Register274+.1,WREG		; 1. bait on slave aadress. Kas jutt mulle ?
+				call	SendCHAR
+	nop
+	nop
+	nop
+	nop
+	movf INDF0,W
+				call	SendCHAR
+	nop
+	nop
+	nop
+	nop
+	goto	reset_ser1
+c:; bsf Dout2
+	nop
+	nop
+	nop
+	nop
+;	bcf	Dout2
+	return
+d:; bsf Dout3
+	nop
+	nop
+	nop
+	nop
+;	bcf	Dout3
+	goto	reset_ser2				; viga
+e:; bsf Dout4
+	nop
+	nop
+	nop
+	nop
+	bcf	Dout4
+	goto	reset_ser2				; viga
+f: ;bsf Dout5
+	nop
+	nop
+	nop
+	nop
+	;bcf	Dout5
+	return
 ;===============================================
 ; ********* käskude täitmine *******************
 ;===============================================
@@ -2178,10 +2243,12 @@ command:		LFSR	.0,Puhver				; pakett OK, täidame käsu !
 				movf	INDF0,W					; kas broadcast (adr. 0x00) ?
 				addlw	.0
 				btfss	ZERO
-				goto	reset_ser1				; viga
+;				goto	reset_ser1				; viga
+	goto b
 				bsf		broadcast				; edaspidi kuulame broadcast-käske ka kuid neile ei vasta !
-				call	reload_side				; oli midagi muud, teeme ikkagi sidetaimeri reload aga ei vasta
-				goto	reset_ser1				; 
+;				call	reload_side				; oli midagi muud, teeme ikkagi sidetaimeri reload aga ei vasta;
+;				goto	reset_ser1				; 
+;	goto b
 ;----------- CHG side reload iga baidi kuulmisel ------------------
 rcv_1:			call	reload_side				; sidetaimeri reload
 ;----------- CHG side reload iga baidi kuulmisel ------------------
@@ -3378,7 +3445,8 @@ T1int_1:		btfss	SerialTimerOn			; seriali taimer käib?
 				addlw	.0
 				btfss	ZERO
 				goto	T1int_2
-				call	reset_ser
+	call f
+;				call	reset_ser
 				bcf		PIR1,RC1IF				; katkestuse nõue maha
 ; *** loendite sisendite debounce ***
 T1int_2:		btfss	sens1tmron				; loendi 1: debounceme ?
@@ -4268,7 +4336,7 @@ main:			call	init					; prose setup
 				movwf	PIE1
 				banksel	.0
 				movf	PORTB,W				
-				movlw	B'01101000'				; Perifeeria intsid lubada, samuti TMR0IE ja RBIE int
+				movlw	B'00101000'				; Perifeeria intsid lubada, samuti TMR0IE ja RBIE int
 				movwf	INTCON
 				movlw	B'00010000'				; katskestusi ei ole esinenud, RS232 porti ei puudu: read-only
 				movwf	PIR1	
@@ -4310,8 +4378,14 @@ tsykkel:		bcf		PIE1,ADIE
 				bcf		temper					; mõõtmine tehtud
 				movlw	_10sekundiaeg
 				movwf	_10sekunditmr
+; bsf Dout6
+;	nop
+;	nop
+;	nop
+;	nop
 ;---------
 aaa:			call	command					; jah - töötle ja täida 
+;	bcf	Dout6
 				call	reset_ser				; tehtud !
 				bcf		cmd_ok					; tehtud !
 				bcf		PIR1,RC1IF
@@ -4908,7 +4982,7 @@ reset_pwm:		movff	Register150+.0,pwmtmp+.1; pertick'is on periood*4 sammu
 				addlw	.0
 				btfss	ZERO
 				goto	reset_pwm1
-				bsf		T0CON,TMR0ON
+		bsf		T0CON,TMR0ON
 				goto	rp1
 reset_pwm1:		bsf		T0CON,TMR0ON			; PWMi taimer käima
 reset_pwm2:		movff	pwmtmp+.0,masterpertick+.0
@@ -6438,7 +6512,7 @@ e_ser:						db 0x1A				; R273 seriali ja sisendite lugemise parameetrid: vaata a
 e_IOD:						db 0x00				; R275 ANA-pordi (UIO) suund, 1= väljund, bitthaaval)
 e_anadigi:					db 0x00;C0				; R271L analoogpordi seisund stardil - analoog või digi. 1= digi
 e_devtype					db 0xF1				; R256
-e_firmwarenr				db 0x02,0x10		; R257H ja L: F/w HIGH ja LOW
+e_firmwarenr				db 0x02,0x11		; R257H ja L: F/w HIGH ja LOW
 e_reset1:					db 0x02,0x58,0x05,0x1E		; R276,R277 60 sekundit, 5 sekund, 30 sekundit
 e_reset2:					db 0x02,0x58,0x05,0x64		; R278,R279 600 sekundit, 5 sekund, 64 sekundit
 e_xor:						db 0xFF				; R271H sellega XORitakse ANA-pordi sisendit (et teha juhitav aktiivne HI/LO

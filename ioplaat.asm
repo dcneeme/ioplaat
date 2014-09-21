@@ -203,6 +203,10 @@
 ; 4.9.: lubame 0 perioodi, siis toimivad üxixkpulsid. Testida !
 ; 9.9.: reset1 asemele TXi järgiv sisend mis tekitab Dir signaali. Dir lõpeb CRC arvutamise alguses ja muidugi seriali resetis.
 ; ei simuleeru (katckestusi ei tule)
+; 28.9.: Viimane asi - C0 ehk 1WSPU püsti. Kurdeti et ilma anduriteta jääb PU peale. Ver.: 2.E
+; 29.9.: DS2438 lugemine oli piiratud 8 anduriga. Peab olema 9.
+; 6.10.: DS2438 aadressi rehkendamine vale - fiksed nüüd.
+; 17.10.: katckestuste prioriteedi tõttu tuli ka discovery ajal katckestus ja asi tuxis. noints lipuga määrame kas 1W rutiinis katckestusi lubada või mitte. Versioon F. Ehk lõplik...
 ;===============================================================================
 ;=============================================================================== 
 ;*********************** Raudvärk **********************************************
@@ -275,7 +279,6 @@
 #define chan7			0x19
 #define chan8			0x1D
 #define	sampletime		0xFF
-;#define	sampletime1		0x20
 ;****** debounce ***
 #define debtime			.1						; 10ms debounce aega igale sisendile
 ;****** side *******
@@ -417,7 +420,7 @@
 #define res_pwm				Measflags,.3
 #define	write				Measflags,.4
 #define	broadcast			Measflags,.5
-
+#define noints				Measflags,.6
 ;**** 1-wire ****
 #define DallasState			bits
 ;=============================================================================== 
@@ -446,19 +449,12 @@
         CONFIG	 CP1 = ON     
         CONFIG	 CP2 = ON     
         CONFIG	 CP3 = ON     
-        CONFIG	 CPB = ON     
-		CONFIG	 WRT0 = ON   
-		CONFIG	 WRT1 = ON   
-		CONFIG	 WRT2 = ON   
-		CONFIG	 WRT3 = ON   
-		CONFIG	 WRTC = ON   
-		CONFIG	 WRTB = ON   
 				errorlevel -302					; Compaileri vingumised ära
 				errorlevel -305
 				errorlevel -306 
 
 ; ************** Mälu jaotus **********	    	
-				cblock 0x00;20
+				cblock 0x00
 					sidetaimer					; mõõdab 30s side kadumise aega
 					sekunditmr
 					lastinputs					; PORTB sisendite eelmine seis
@@ -711,12 +707,10 @@
 					pwm13work:.2
 					pwm14work:.2
 					pwm15work:.2
-;					phasecounter				; jooksva perioodi number
 					periodtick:.3				; ühes perioodis on periood*4 sammu (250 us)
 					masterpertick:.3			; sama aga siin numbrit hoitakse ja siit laetakse "periodtick'i"
 					mphasetick:.2				; 1-s faasis täpselt 1*periood sammu
 					phasetick:.2				; tööregister
-;					BSRtmp
 					endc
 ; *** DS2438 registrid ***
 					cblock	0x400				; Vadc, I, Vdd, Temp.
@@ -788,8 +782,6 @@
 #define 		YH				_RS485chkH
 #define 		YL				_RS485chk
  ; ************* asjad puhvris peale käsu vastuvõttu ****************	    	
-;#define			m_adr			Puhver+.0		; slave aadress
-;#define			m_cmd			Puhver+.1		; käsukood
 #define			m_radrH			Puhver+.2		; loetava/kirjutatava registri aadress HIGH
 #define			m_radrL			Puhver+.3		; loetava/kirjutatava registri aadress LOW
 #define			n_regH			Puhver+.4		; loetavate/kirjutatavate registrite arv HIGH
@@ -821,8 +813,9 @@
 ;*********************** katckestused ******************************************
 ;===============================================================================
 				org     0x0008					; Ints HIGH
-				btfsc	PIR3,CCP2IF				; järgitava serial-signaali katckestus?
-				call	LisaSer
+				bsf		Dir						; Dir signaal algab
+				bcf		PIE3,CCP2IE
+				bcf		PIR3,CCP2IF
 				retfie                   	
 
 				org 	0x0018					; Ints LOW
@@ -847,13 +840,6 @@ _Pop:			movff	FSRtmpL,FSR0L
 				movwf   STATUS           		; taasta STATUS         
 				swapf   W_Temp,F         
 				swapf   W_Temp,W         		; Taasta W         
-				retfie                   	
-;===============================================================================
-; ******* CCP2 INT. *******
-;===============================================================================
-LisaSer:		bsf		Dir						; Dir signaal algab
-				bcf		PIR3,CCP2IF
-				bcf		PIE3,CCP2IE
 				retfie                   	
 ;===============================================================================
 ; ******* PWMi taimeri INT. *******
@@ -918,12 +904,10 @@ Faasup0:		LFSR	.0,Register151+.1		; siia läheb kirja väljundi reaalne seis
 				subwf	phasecounter,W		
 				btfss	ZERO
 				goto	Faasup1					; ei, võta järgmine väljund
-Faasup0nf:				btfsc	RegX+.1,.0				; väljund läheb kõrgeks, kas juba on ?
+Faasup0nf:		btfsc	RegX+.1,.0				; väljund läheb kõrgeks, kas juba on ?
 				goto	Faasup1					; jah, võta järgmine väljund
-		btfss	Register0+.1,.0			; väljundi määramiseks tee XOR reg-ga D0
+				btfss	Register0+.1,.0			; väljundi määramiseks tee XOR reg-ga D0
 				goto	Faasup0_0				; D0 on 0 -> väljund = 1
-;				btfsc	RegX+.1,.0				; väljund läheb kõrgeks, kas juba on ?
-;				goto	Faasup1					; jah, võta järgmine väljund
 				bcf		PORTA,.0				
 				bcf		INDF0,.0				; kajasta ka väljundite seisu r/o registris	151
 				goto	Faasup0ex				; tehtud !
@@ -1867,7 +1851,6 @@ Loendid:		movf	PORTB,W
 				goto	counter7				; jah
 ;				btfsc	muutus,.7				; loendi 8 ?
 				goto	counter8				; jah
-;				goto	Andur_end1;Andur_end	
 ; *** Loendi 1 ***
 counter1:		btfss	dataport,.0				; reageerime vaid langevale frondile
 				goto	counter1_1
@@ -1969,7 +1952,6 @@ counter8_1:		bcf		lastinputs,.7
 				goto	counter8_2	
 				goto	Andur_end	
 counter8_2:		bsf		sens8tmron 	
-;				goto	Andur_end	
 ;===============================================================================
 Andur_end:		movf	dataport,W				; rohkem muutusi ei ole (korraga rakendunud loendid) ?
 				xorwf	lastinputs,W		
@@ -2045,11 +2027,9 @@ wieg_prepB:		movlw	wiegandtime
 				LFSR	.0,Register15+.7			; jooxva biti salvestamiseks vajaliku registri aadress
 				return
 ;===============================================================================
-rotH:;			bsf		STATUS,IRP				; 3. mäluplokk !
-				bsf		CARRY
+rotH:			bsf		CARRY
 				goto	rot
-rotL:;			bsf		STATUS,IRP
-				bcf		CARRY
+rotL:			bcf		CARRY
 rot:			rlcf		INDF0,F
 				decf	FSR0L,F
 				rlcf		INDF0,F
@@ -2066,8 +2046,6 @@ rot:			rlcf		INDF0,F
 				decf	FSR0L,F
 				rlcf		INDF0,F
 				decf	FSR0L,F
-
-;				bsf		STATUS,IRP				; tagasi maa peale...
 				return
 ;===============================================================================
 wieg_endAH:		bsf		lastinputs,.7			; updateeri sisendite seisu
@@ -2118,8 +2096,7 @@ modbus_rcv:		movf	bytecnt,W				; kontrolli puhvri piire
 				btfss	ZERO
 				goto	modb_r1					; ei, päris mitmes oli...
 				movf	Char,W
-;				movwf	mbCmnd					; seivib igax pettex
-				sublw	modbus_cnf;modbus_wrmulti
+				sublw	modbus_cnf
 				btfss	ZERO
 				goto	modb_r00				; ei, äkki wr_multi ?
 				movlw	.12;7
@@ -2134,53 +2111,18 @@ modb_r00:		movf	Char,W
 				goto	RREnd1					; jääb kuuldele...
 
 
-modb_r0:;		movf	Char,W					; 1. bait on aadress. Kas 0x00 ehk broadcast ?
-;;				movwf	mbAdr					; seivime
-;				addlw	.0
-;				btfsc	ZERO
-;				goto	modb_r12				; on broadcast
-;
-;				movf	Char,W					; Äkki käsk 0x10 ?
-;				sublw	modbus_wrmulti
-;				btfss	ZERO
-;				goto	modb_r1					; ei, siis ei näpi - tavaline riid
-;				movlw	.7
-;				movwf	countL
-;				goto	modb_r1
-
-modb_r12:;		movlw	.12						; on broadcast, see peaks olema 12 -baidine
-		;		movwf	countL
-modb_r1:;		movf	bytecnt,W				; mitmes bait oli
-		;		sublw	.3
-		;		btfss	ZERO
-		;		goto	modb_r14				; ei
-		;		movf	Char,W
-		;		movwf	work1;mbRAdrH					; seivi algusregistri aadress HIGH
-modb_r14:;		movf	bytecnt,W				; mitmes bait oli
-		;		sublw	.4
-		;		btfss	ZERO
-		;		goto	modb_r15				; ei
-		;		movf	Char,W
-		;		movwf	work2;mbRAdrL					; seivi algusregistri aadress LOW
-modb_r15:;		movf	bytecnt,W				; mitmes bait oli
-		;		sublw	.5
-		;		btfss	ZERO
-		;		goto	modb_r16				; ei
-		;		movf	Char,W
-;				movwf	mbnregH					; seivi regitrite arv HIGH (käsud RD (3) ja write multi (10)
-modb_r16:;		movf	bytecnt,W				; mitmes bait oli
-		;		sublw	.6
-		;		btfss	ZERO
-		;		goto	modb_r17				; ei
-		;		movf	Char,W
-;				movwf	mbnregL					; seivi regitrite arv LOW (käsud RD (3) ja write multi (10)
+modb_r0:
+modb_r12:
+modb_r1:
+modb_r14:
+modb_r15:
+modb_r16:
 modb_r17:		movf	bytecnt,W
 				subwf	countL,W				; saadetis käes (countL-s oodatav baitide arv)?
 				btfss	ZERO
 				goto	RREnd1					; eip !
-;				movf	mbCmnd,W				; kas oli käsk 0x10 (kirjuta mitu reg. korraga)?
 				movff	Puhver+.1,WREG
-				sublw	modbus_wrmulti
+				sublw	modbus_wrmulti			; kas oli käsk 0x10 (kirjuta mitu reg. korraga)?
 				btfss	ZERO
 				goto	modb_r2					; ei, pakett käes, kontrolli summat
 				btfsc	cmd10
@@ -2201,7 +2143,7 @@ modb_r2:		movlw	0xFF					; pakett käes, kontrollime
 
 				bcf		Dir						; lisa Dir signaal nulli
 				bcf		PIR3,CCP2IF
-				bsf		PIE3,CCP2IE				; ja lubame jälle sellise tekiamise
+				bsf		PIE3,CCP2IE				; ja lubame jälle sellise tekitamise
 
 modb_r3:		movf	INDF0,W
 				call	mb_crc16				; kontrollsummeeri
@@ -2217,7 +2159,6 @@ modb_r3:		movf	INDF0,W
 				subwf	INDF0,W
 				btfss	ZERO
 				goto	reset_ser2				; viga, eksiteerib via reset_ser
-;				call	reset_ser				; pakett ok, nulli ikkagi seriali side
 				bsf		cmd_ok					; aga märgi ära, et pakett oli ok
 				bcf		SerialTimerOn			; taimer seisma
 				banksel	PIE1
@@ -2238,10 +2179,8 @@ command:		LFSR	.0,Puhver				; pakett OK, täidame käsu !
 				btfss	ZERO
 				goto	reset_ser1				; viga
 				bsf		broadcast				; edaspidi kuulame broadcast-käske ka kuid neile ei vasta !
-;			btfsc	cmd10
-;			goto	rcv_1					; broadcastile vastab vaid siis kui oli käsk konfiks
-			call	reload_side				; oli midagi muud, teeme ikkagi sidetaimeri reload aga ei vasta
-			goto	reset_ser1				; 
+				call	reload_side				; oli midagi muud, teeme ikkagi sidetaimeri reload aga ei vasta
+				goto	reset_ser1				; 
 ;----------- CHG side reload iga baidi kuulmisel ------------------
 rcv_1:			call	reload_side				; sidetaimeri reload
 ;----------- CHG side reload iga baidi kuulmisel ------------------
@@ -2273,8 +2212,7 @@ reload_side:	bsf		sidetmron
 				movwf	reset1pulsetmr		
 				movff	Register277+.1,WREG		; taasta side kadumise viiteaeg reseti 1 generaatorile
 				movwf	reset1dlytmr
-;				bsf		reset1					; reseti 1 pinn maha (igaks juhux)
-			bsf		n_reset1				; inversioon
+				bsf		n_reset1				; inversioon
 				bcf		reset1pulseon			; reseti 1 pulsi generaator OHV (igaks juhux)
 rls1:;			bsf		pank1
 				movff	Register279+.0,WREG		; taasta pulsi kestus
@@ -2631,17 +2569,13 @@ send1:			movf	POSTINC1,W
 				decfsz	bytecnt
 				goto	send1
 				bcf		Dir
-;				btfsc	res_pwm					; kirjutati reg.149 või 150-sse ?
-;				call	reset_pwm				; jep! reseti PWM !
-;				btfsc	res_pwm					; kirjutati reg.150-sse ?
-;				call	reset_per				; jep! tee periood nullix ja väljundid kah !
 				btfss	writeit					; oli konfidaata ja see tuleks EEPROMi kirjutada?
 				goto	reset_ser
 				bcf		INTCON,GIE
-			bcf		INTCON,PEIE
+				bcf		INTCON,PEIE
 				call	Save_Setup				; jah
 				bsf		INTCON,GIE
-			bsf		INTCON,PEIE
+				bsf		INTCON,PEIE
 
 send2:			bcf		writeit					; kirjutatud !
 				goto	reset_ser;1				; lõpetame jama ää...
@@ -2675,18 +2609,6 @@ dly1:			btfss	PIR2,TMR3IF					; 5,5 mS viidet
 				bcf		PIR2,TMR3IF
 				bcf		PIE2,TMR3IE
 				return
-;;===============================================================================
-;dly:			movlw	0x00
-;				movwf	TMR4
-;				bsf		T4CON,TMR4ON
-;				bcf		PIR4,TMR4IF
-;dly1:			btfss	PIR4,TMR4IF					; 5,5 mS viidet
-;				goto	dly1
-;				bcf		T4CON,TMR4ON
-;				bcf		PIR4,TMR4IF
-;				bcf		PIE4,TMR4IE
-;				return
-;;===============================================================================
 ;===============================================================================
 ;if( X <= K ) (signed)
 ;  movlw Khi
@@ -2898,11 +2820,11 @@ validate8:		movff	m_radrH,XH				; adr >685 ?
 				movlw	LOW(.687)
 				movwf	XL
 				goto	validate_end
-validate9:		movff	m_radrH,XH				; adr >731 ?
+validate9:		movff	m_radrH,XH				; adr >735 ?
 				movff	m_radrL,XL
-				movlw	HIGH(.731)
+				movlw	HIGH(.735)
 				movwf	YH
-				movlw	LOW(.731)
+				movlw	LOW(.735)
 				movwf	YL
 				call	compare16_16
 				btfss	CARRY			
@@ -2914,9 +2836,9 @@ validate9:		movff	m_radrH,XH				; adr >731 ?
 				call	compare16_16
 				btfsc	CARRY
 				goto	validate_bad			; siis error !			
-				movlw	HIGH(.733)				; max=733 -> DS2438 näidud
+				movlw	HIGH(.737)				; max=733 -> DS2438 näidud
 				movwf	XH
-				movlw	LOW(.733)
+				movlw	LOW(.737)
 				movwf	XL
 				goto	validate_end
 validate10:		movff	m_radrH,XH				; adr >785 ?
@@ -2982,19 +2904,18 @@ ch_algadr:		bcf		clrsticky				; oletame, et ei loetud reg.1-e.
 				bcf		sync
 				bcf		res_pwm
 				bcf		readonly
-			movff	m_radrL,WREG
-			movff	WREG,Puhver+RSBufLen-.1
-			movff	m_radrH,WREG				; kas register 0 ?
-			movff	WREG,Puhver+RSBufLen-.2
+				movff	m_radrL,WREG
+				movff	WREG,Puhver+RSBufLen-.1
+				movff	m_radrH,WREG				; kas register 0 ?
+				movff	WREG,Puhver+RSBufLen-.2
 				addlw	.0
 				btfss	ZERO
-				goto	ch_alg0;1
+				goto	ch_alg0
 				movff	m_radrL,WREG
 				addlw	.0
 				btfss	ZERO
 				goto	ch_alg0;1
 				bsf		reg0					; et alustati registrist 0
-;				bcf		readonly
 				goto	chk_algok				; on r/w register 0, kõik OK
 ch_alg0:		movff	m_radrL,WREG			; aadressi kontroll jätkub
 				sublw	0xFF					; kas device type register ?
@@ -3033,20 +2954,10 @@ ch_alg0:		movff	m_radrL,WREG			; aadressi kontroll jätkub
 				goto	chk_algbad				; oli liiga kõrge aadress
 				goto	chk_alg11				; pwmi register oli
 
-;				goto	chk_alg2				; tööregistrid, kontrolli et adr <= 18	
 chk_alg1:		bsf		readonly				; on vaid loetav register
 				movlw	.0
 				movff	WREG,m_radrH
-;			clrf	m_radrH					; kõrgemate adr. puhul vajalik
 				goto	chk_algok				; OK
-;chk_alg3:		movlw	.2
-;				subwf	m_radrH,W
-;				btfsc	ZERO
-;				goto	chk_alg8				; tegu Dallase juraga
-;				movlw	.3
-;				subwf	m_radrH,W
-;				btfsc	ZERO
-;				goto	chk_alg8				; tegu Dallase juraga aga ilmselt DS2438
 chk_alg3:		movff	m_radrH,WREG
 				sublw	.2
 				btfsc	ZERO
@@ -3056,19 +2967,6 @@ chk_alg3:		movff	m_radrH,WREG
 				btfsc	ZERO
 				goto	chk_alg8				; tegu Dallase juraga aga ilmselt DS2438
 ;**** uptime loendamine ****
-;chk_alg3c:		movlw	.1						; kas uptime loendi (1F2,3,4,5)
-;				subwf	m_radrH,W
-;				btfss	ZERO
-;				goto	chk_alg3e				; eip
-;				movlw	0xF2
-;				subwf	m_radrL,W
-;				btfss	CARRY
-;				goto	chk_alg3e				; eip
-;				movlw	0x5D
-;				movwf	m_radrL
-;				clrf	m_radrH					
-;				bsf		dallas
-;				goto	chk_alg1				; jah, see on r/0 register !
 chk_alg3c:		movff	m_radrH,WREG			; kas uptime loendi (1F2,3,4,5)
 				sublw	.1
 				btfss	ZERO
@@ -3104,7 +3002,6 @@ chk_alg3b:		bcf		dallas					; ei ole dallase asi ei ole loendi kah, parandame
 				movlw	.19						; 256dec -> jrk.nr. 19dec , r-only, dev. type
 				movff	WREG,m_radrL
 				goto	chk_alg1
-;-
 chk_alg3a:		movff	m_radrL,WREG	
 				sublw	0x01
 				btfss	ZERO
@@ -3195,8 +3092,8 @@ chk_alg8:		movff	m_radrH,WREG			; teha reset (äksessiti reg. 999) ?
 				btfss	ZERO
 				goto	chk_algbad
 				bcf		INTCON,GIE
-;rese:			goto	rese					; jah, laseme vahikoeral reseti teha
-				reset							; jah
+				bcf		INTCON,PEIE			
+				reset							; jah, laseme reseti teha
 
 chk_alg8a:		movff	m_radrH,WREG			; > 700 ? Siis DS2438 kivi
 				sublw	.3
@@ -3221,7 +3118,6 @@ chk_alg8b:		movff	m_radrL,WREG
 				movff	WREG,m_radrL
 				movlw	.0
 				movff	WREG,m_radrH
-;				clrf	m_radrH					
 				bsf		dallas
 				goto	chk_alg1				; jah, need on r/0 registrid !
 				
@@ -3267,17 +3163,13 @@ chk_alg12a:		movlw	.117
 				movff	WREG,m_radrL
 				bsf		pwm
 				LFSR	.0,Register151+.0
-;				bsf		writeit					; oli konfidaata.kirjutada EEPROMi !
 				bsf		readonly				; R151 on nüüd r/o !
 				goto	chk_algok
-;				goto	chk_alg11
-chk_alg12b:	;	movlw	.116
-			;	movff	WREG,m_radrL
-				bsf		pwm
+chk_alg12b:		bsf		pwm
 				bsf		res_pwm					; kirjutati reg-sse 149, tee PWMile reset
-				LFSR	.0,Register149out+.0;Register149+.0
-			btfsc	write
-			LFSR	.0,Register149in+.0;Register149+.0
+				LFSR	.0,Register149out+.0
+				btfsc	write
+				LFSR	.0,Register149in+.0
 				goto	chk_algok
 
 chk_alg13:		movff	m_radrH,WREG
@@ -3292,10 +3184,11 @@ chk_alg13:		movff	m_radrH,WREG
 				LFSR	.0,DS2438_1				; näitude registrite baas
 				movlw	.0
 				movff	WREG,m_radrH
-				movff	m_radrL,WREG
-				sublw	LOW(.700)				; aadress-0xBC
-				bcf		CARRY
+				movff	m_radrL,serpartmp
+				movlw	LOW(.700)				; aadress-0xBC
+				subwf	serpartmp,W	
 				movff	WREG,m_radrL
+				bcf		CARRY
 				movwf	serpartmp
 				rlcf	serpartmp,F				; *2
 				addwf	FSR0L,F
@@ -3331,39 +3224,6 @@ chk_algbad:		bsf		CARRY					; algusaadress oli üle piiri => Cy=1
 				bcf		clrsticky	
 				return
 ;===============================================================================
-;chk_len:		movff	n_regH,WREG				; loetavate registrite arv (HIGH)
-;				addlw	.0
-;				btfss	ZERO
-;				goto	chk_lenbad				; liiga pikk lugemise/kirjutamise soov -> per...
-;				movff	n_regL,WREG				; loetavate registrite arv (LOW)
-;				movff	m_radrL,serpartmp
-;				addwf	serpartmp,W				; mitut registrit sooviti töödelda ?
-;				sublw	maxregisters
-;				btfss	CARRY
-;				goto	chk_lenbad
-;
-;				movff	n_regL,serpartmp
-;				rlcf	serpartmp,W				; ei tohi puhvri piiridest välja minna ~!~~
-;				addlw	.5
-;				sublw	RSBufLen
-;				btfss	CARRY
-;				goto	chk_lenbad
-;
-;				bsf		clrsticky				; oletame, et lubataxe sticky't maha võtta
-;
-;				btfss	reg0					; kas vaid 1 register & reg0 ? siis clrsticky =0 !!!
-;				goto	chk_len1				; ei, siis kõik kenasti
-;				movff	n_regL,WREG				; loetavate registrite arv (LOW)
-;				sublw	.1
-;				btfss	ZERO
-;				goto	chk_len1				; ei, siis kõik kenasti
-;				bcf		clrsticky				; jah, siis oli vaid reg. 0 lugemine => ei luba sticky't maha võtta
-;chk_len1:		bcf		CARRY					; lõppaadress oli lubatud piirides => Cy=0
-;				return
-;chk_lenbad:		bsf		CARRY					; lõppaadress oli üle piiri => Cy=1
-;				bcf		clrsticky	
-;				return
-;;===============================================================================
 valekask:		movlw	IllFunc					; vale käsk, mine per...
 				goto	send_err
 valedata:		movlw	IllDAdr
@@ -3377,10 +3237,9 @@ send_err:		movff	WREG,Puhver+.2			; vea kood puhvrisse
 				movwf	POSTINC1				; oma aadress
 				call	mb_crc16
 				incf	bytecnt,F				; loendame baite
-			movff	Puhver+.1,WREG
-			addlw	0x80
-			movff	WREG,Puhver+.1
-;				bsf		Puhver+.1,.7
+				movff	Puhver+.1,WREG
+				addlw	0x80
+				movff	WREG,Puhver+.1
 				movf	POSTINC1,W				; bump'i pointerit
 				movff	Puhver+.1,WREG
 				call	mb_crc16
@@ -3390,8 +3249,7 @@ send_err:		movff	WREG,Puhver+.2			; vea kood puhvrisse
 				incf	bytecnt,F				; loendame baite
 				goto	paketilopp				; summa puhvisse ja saada teele
 ;===============================================================================
-reset_ser2:;	bsf	Dout0
-			goto	reset_ser
+reset_ser2:		goto	reset_ser
 reset_ser1:		call	reload_side				; sidetaimeri reload
 reset_ser:		clrf	bytecnt					; - baitide loendi
 				bcf		SerialTimeOut			
@@ -3408,15 +3266,12 @@ reset_ser:		clrf	bytecnt					; - baitide loendi
 				movwf	countL
 				bcf		cmd10
 				bcf		cmd_ok
-
 				bcf		Dir						; lisa Dir signaal nulli
 				bcf		PIR3,CCP2IF
 				bsf		PIE3,CCP2IE				; ja lubame jälle sellise tekiamise
-
 				return
 RREnd1:			movlw	serialtime				; relae ootetaimer
 				movwf	serialtimer
-;				call	reload_side				; sidetaimeri reload
 				return
 ;===============================================================================
 ; ********************** funktsioonid ******************************************
@@ -4422,18 +4277,26 @@ main:			call	init					; prose setup
 				banksel	.0
 				clrwdt
 
+				movlw	0x04					; Capture igal langeval frondil
+				banksel	CCP2CON
+				movwf	CCP2CON
+				banksel	PIE3
+				bsf		PIE3,CCP2IE
+				banksel	.0
 				movlw	0x04
 				movwf	IPR3					; CCP2 kõrge prioriteediga
 				clrf	IPR1					; kõik muud intsid on madala prioriteediga
 				clrf	IPR2
 				clrf	IPR4
 				clrf	IPR5
+
 				clrf	INTCON2
 				bsf		INTCON2,.7				; B-pullupid maha
+
 				bsf		RCON,IPEN				; lubame katkestuste prioriteedid
+
 				bcf		INTCON,TMR0IF			; debuggeri jaox ainult !
 				bsf		INTCON,PEIE			
-
 				bsf		INTCON,GIE				; lubame kindral-katckestused
 tsykkel:		bcf		PIE1,ADIE
 				bcf		PIR1,TXIF				; katkestuse nõue maha
@@ -4442,17 +4305,12 @@ tsykkel:		bcf		PIE1,ADIE
 ;----------
 				btfss	temper					; aeg temperatuuri mõõta ?
 				goto	aaa
-;	bcf	INTCON,GIE
-;	bcf		INTCON,PEIE
 				call	GetT					; jepp
-;	bsf	INTCON,GIE
-;	bsf		INTCON,PEIE
-			bcf		temper					; mõõtmine tehtud
-			movlw	_10sekundiaeg
-			movwf	_10sekunditmr
+				bcf		temper					; mõõtmine tehtud
+				movlw	_10sekundiaeg
+				movwf	_10sekunditmr
 ;---------
-aaa:				call	command					; jah - töötle ja täida 
-;	bcf	Dout0
+aaa:			call	command					; jah - töötle ja täida 
 				call	reset_ser				; tehtud !
 				bcf		cmd_ok					; tehtud !
 				bcf		PIR1,RC1IF
@@ -4602,12 +4460,8 @@ incrpointer:	movlw	.7						; viitab järgmise kanali tulemustele
 ;===============================================================================
 ; ************** analoogpingete mõõtmine ***************************************
 ;===============================================================================
-;					ch1meascnt
-;					ch1sum:.2 ; LSB, MSB
-;					ch1min:.2 ; MSB, LSB
-;					ch1max:.2 ; MSB, LSB
 measure:
-		banksel	.0
+				banksel	.0
 				LFSR	.1,ch1sum				; viitame vahetulemuste registritele
 				movf	meascount,W
 				mullw	.7
@@ -4635,7 +4489,6 @@ meas1:			BTFSC 	ADCON0,GO
 				banksel .0
 				movf	POSTINC1,W				; on liiga suur number, suurendame vaid tulemuse mäluviita
 				movf	POSTINC1,W
-;				call	incrpointer				; vahetulemuste viita suurenda kah
 				return
 meas2:			decf	POSTINC1,F				; tulemus OK, vähenda keskmistamise kordade loendit
 				banksel	ADRESL					; ja liida tulemus summa registrisse
@@ -4648,8 +4501,6 @@ meas2:			decf	POSTINC1,F				; tulemus OK, vähenda keskmistamise kordade loendit
 				movf	ADRESH,W
 				banksel	.0
 				addwf	POSTINC1,F
-;				movff	POSTINC1,DestH			; loe senine min väärtus
-;				movff	POSTINC1,DestL
 				call	comparemin				; võrdleme min. väärtusega: kui A < Min,  vaiksem = 1
 				btfss	vaiksem
 				goto	meas3					; ei ole <, senine min jääb kehtima
@@ -4663,9 +4514,7 @@ meas2:			decf	POSTINC1,F				; tulemus OK, vähenda keskmistamise kordade loendit
 				movf	ADRESL,W
 				banksel	.0
 				movwf	POSTINC1
-meas3:;			movff	POSTINC1,DestH			; loe senine max väärtus
-	;			movff	POSTINC1,DestL
-				call	comparemax				; võrdleme max. väärtusega
+meas3:			call	comparemax				; võrdleme max. väärtusega
 				btfss	suurem					; kui A < Max,  Cy = 1
 				goto	meas4					; on <, senine max jääb kehtima
 				movf	POSTDEC1,W				; tulemus > Max, seivime ta uueks max'iks	
@@ -4724,7 +4573,7 @@ keskmista1:		movff	FSR2L,FSR1L				; poindi summale
 				movlw	MaxInitialL
 				movwf	POSTINC1
 				return	
-; ***********************************************************************
+;===============================================================================
 comparemax:		nop
 				banksel	ADRESH
 				movf   	ADRESH,W		        ; pinge võrdlemine Max-ga
@@ -4765,14 +4614,14 @@ compare_eq:		bcf		vaiksem
 				bcf		suurem
 				bsf		vordne
 				return
-;*************************************************************************
+;===============================================================================
 ;       SourceH:SourceL - Number to be subtracted
 ;       Carry - NOT( Borrow to be subtracted )
 ;       DestH:DestL - Number to be subtracted FROM
 ;Out    DestH:DestL - Result
 ;       Carry - NOT( Borrow result)
 ; Dest=Dest-Source
-;*************************************************************************
+;===============================================================================
 sub1616min:		movff	POSTINC1,DestL			; summa registri sisust lahutame
 				movff	POSTINC1,DestH			; NB! Summa on LSB, MSB järjekorras
 				movff	POSTINC1,SourceH		; min registri sisu
@@ -4791,13 +4640,13 @@ sub1616:        movff   SourceL,WREG
         		incfsz  SourceH,W
         		subwf   DestH           		; dest = dest - source, WITH VALID CARRY (although the Z flag is not valid).                                
 				return
-;*************************************************************************
+;===============================================================================
 ; MB_CRC16 -	Will calculate 16bit CRC for MODBUS RTU Packets
 ;
 ;		Input: 	Byte for CRC in W
 ;		Output:	Original byte in W, 
 ;			CRC16_HI and CRC16_LO new value of CRC16
-;*************************************************************************
+;===============================================================================
 mb_crc16:		movwf	mb_del1
 				movwf	mb_temp2				; store W
 				movlw	.8						; 8 bits
@@ -4837,10 +4686,8 @@ Crc_Shift:		rrcf		_RS485chkH,F			; 16bit rotate
 ;===============================================================================
 SendCHAR:		movwf	Char;sendtemp				; seivi saadetav
 				movwf	countH
-;				bsf		pank1
 				btfsc	Register273+.1,.7		; bit7 paarsus. 0=EVEN,1=NO PARITY
 				goto	snd_exit
-;				bcf		pank1
 ; kalkuleeri paarsuse bitt
 				movlw	.8
 				movwf	countL
@@ -4854,43 +4701,32 @@ parity:			rrcf		countH,F
 				bcf		CARRY
 				btfsc	adrtemp,.0
 				bsf		CARRY
-;				banksel	TXSTA1					; paarsuse bitt on nüüd TXSTA,TX9D-s
-;			bsf		pank
 				banksel	TXSTA1
 				bcf		TXSTA1,TX9D
 				btfsc	CARRY
 				bsf		TXSTA1,TX9D
 				banksel	.0
 snd_exit:
-;		banksel	.0
 snd_exita:		btfss   PIR1,TXIF     			; saatja valmis ?   
 			    goto    snd_exita
-				movf	Char,W;sendtemp,W				; saadetav bait meelde tuletada
+				movf	Char,W					; saadetav bait meelde tuletada
 				banksel	TXREG1
 				movwf   TXREG1    				; saada!
 				banksel	TXSTA1
 snd_exit1:		btfss	TXSTA1,TRMT				; kas saatja nihkeregister tühi (bait prosest väljas)?
 				goto	snd_exit1
 				banksel	.0
-;				bsf		pank
-				movf	Char,W;sendtemp,W				; taasta saadetav
-;				bcf		pank
+				movf	Char,W					; taasta saadetav
 			    return
 ;===============================================================================
-;				org		0x800
-setup_serial:;	nop
-;				bsf		pank1
-				movff	Register273+.1,WREG	
+setup_serial:	movff	Register273+.1,WREG	
 				andlw	0x07
 				movff	WREG,Register273
-;				bcf		pank1
 				movlw	.71						; baudrate = (9600 @ 11.0592 MHz)
 				banksel	SPBRG1	
 				movwf	SPBRG1		
 				banksel	.0
-;				bsf		pank1
 				movff	Register273,WREG
-;				bcf		pank1
 				sublw	.1						; kas on 9600 ?
 				btfsc	ZERO
 				goto	initser_par				; jah
@@ -4898,9 +4734,7 @@ setup_serial:;	nop
 				banksel	SPBRG1	
 				movwf	SPBRG1		
 				banksel	.0
-;				bsf		pank1
 				movff	Register273,WREG
-;				bcf		pank1
 				sublw	.2						; kas on 19200 ?
 				btfsc	ZERO
 				goto	initser_par				; jah
@@ -4908,9 +4742,7 @@ setup_serial:;	nop
 				banksel	SPBRG1	
 				movwf	SPBRG1		
 				banksel	.0
-;				bsf		pank1
 				movff	Register273,WREG
-;				bcf		pank1
 				sublw	.3						; kas on 38400 ?
 				btfsc	ZERO
 				goto	initser_par				; jah
@@ -4918,9 +4750,7 @@ setup_serial:;	nop
 				banksel	SPBRG1	
 				movwf	SPBRG1		
 				banksel	.0
-;				bsf		pank1
 				movff	Register273,WREG
-;				bcf		pank1
 				sublw	.4						; kas on 57600 ?
 				btfsc	ZERO
 				goto	initser_par				; jah
@@ -4928,9 +4758,7 @@ setup_serial:;	nop
 				banksel	SPBRG1	
 				movwf	SPBRG1		
 				banksel	.0
-;				bsf		pank1
 				movff	Register273,WREG
-;				bcf		pank1
 				sublw	.5						; kas on 115200 ?
 				btfsc	ZERO
 				goto	initser_par				; jah
@@ -4939,34 +4767,24 @@ setup_serial0:
 				banksel	SPBRG1	
 				movwf	SPBRG1		
 				banksel	.0
-;				bsf		pank1
 				movff	Register273+.1,WREG		; parandame vea: võtab vaikimisi seriali seaded aga ei muuda debounce ja sticky bitte ! Samuti ei näpi Wiegandi bitte !!!
-;				bcf		pank1
 				andlw	0x78
-;				bsf		pank1
 				movff	WREG,Register273
-;				bcf		pank1
 				movlw	defaultserial
 				andlw	0x07
-;				bsf		pank1
-			addwf	Register273,W
+				addwf	Register273,W
 				movff	WREG,Register273+.1			
-;				bcf		pank1
-initser_par:;	bsf		pank1
-				movlw	0x00
+initser_par:	movlw	0x00
 				movff	WREG,Register273		; selle solkisime ää, nüüd nulli
 				movlw	B'01100111'				; paarsuse kalkuleerimine - eeldame: 9 bitine saade
 				btfsc	Register273+.1,.7		; paarsus even (0) või puudub (1) ?
 				movlw	B'00100110'				; paarsus puudub: 8 bitine saade
-;				bcf		pank1
 				banksel	TXSTA1
 				movwf	TXSTA1
 				banksel	.0
 				movlw	B'11010000'				; sama RCSTA jaoks: eeldame paarsust st. 9-bitist saadet
-;				bsf		pank1
 				btfsc	Register273+.1,.7		
 				movlw	B'10010000'			
-;				bcf		pank1
 				banksel	RCSTA1
 				movwf	RCSTA1
 				banksel	.0
@@ -5065,7 +4883,6 @@ Read_Setup:		movlw	LOW(e_ADR)				; loe oma modbussi aadress
 				call	Read_EEPROM			
 				movff	WREG,Register151+.1
 				call	reset_pwm				; initsialiseerime PWMi
-;			call	reset_chanls			; taasta pulsside kestused
 				goto	setup_port				; kombineeri DO ja UIO juhtimine ja vastavate registrite sisud
 				return
 reset_pwm:		movff	Register150+.0,pwmtmp+.1; pertick'is on periood*4 sammu
@@ -5090,11 +4907,8 @@ reset_pwm:		movff	Register150+.0,pwmtmp+.1; pertick'is on periood*4 sammu
 				addlw	.0
 				btfss	ZERO
 				goto	reset_pwm1
-;---CHG
-		bsf		T0CON,TMR0ON
-		goto	rp1
-;;;;;				bcf		T0CON,TMR0ON			; jah, PWM seisma
-;;;;;				goto	reset_pwm2
+				bsf		T0CON,TMR0ON
+				goto	rp1
 reset_pwm1:		bsf		T0CON,TMR0ON			; PWMi taimer käima
 reset_pwm2:		movff	pwmtmp+.0,masterpertick+.0
 				movff	pwmtmp+.1,masterpertick+.1
@@ -5111,8 +4925,8 @@ reset_phase:	movff	Register150+.0,mphasetick+.0; faasis on "periood" sammu
 				movlw	.4						; jaap, taasta 1ms loendi
 				movwf	_1mscount
 rp1:			clrf	Register149out+.0		; aeg perioodi algusest
-			clrf	Register149out+.1
-			return
+				clrf	Register149out+.1
+				return
 
 reset_chanls:	LFSR	.0,pwm0set				; taasta pulsside kestused
 				LFSR	.1,pwm0work
@@ -5131,8 +4945,6 @@ reset_chanls3:	decfsz	_1mscount
 				goto	reset_chanls1
 				movlw	.4					; jaap, taasta 1ms loendi
 				movwf	_1mscount
-;			clrf	Register149out+.0		; aeg perioodi algusest
-;			clrf	Register149out+.1
 				return
 reset_per:		movlw	0x00
 				movff	WREG,periodtick+.0		; nulli perioodi loendi et periood saax kohe alata
@@ -5140,81 +4952,12 @@ reset_per:		movlw	0x00
 				movff	WREG,periodtick+.2
 				movlw	.0					
 				movwf	TMR0L
-;				clrf	RegX+.0					; nulli PWMi loogika register
-;				clrf	RegX+.1
 				LFSR	.0,Register151+.1
 				movlw	0x00
 				movwf	INDF0
-;				btfsc	INDF0,.0				; nulli PWMi väljundid
-;				bsf		PORTA,.0
-;				btfsc	INDF0,.1				
-;				bsf		PORTA,.1
-;				btfsc	INDF0,.2				
-;				bsf		PORTA,.2
-;				btfsc	INDF0,.3				
-;				bsf		PORTA,.3
-;				btfsc	INDF0,.4				
-;				bsf		PORTA,.5
-;				btfsc	INDF0,.5				
-;				bsf		PORTE,.0
-;				btfsc	INDF0,.6				
-;				bsf		PORTE,.1
-;				btfsc	INDF0,.7				
-;				bsf		PORTE,.2
-
-;				btfsc	INDF0,.0				; nulli Registri 0 vastavad bitid
-;				bcf		Register0+.1,.0			
-;				btfsc	INDF0,.1			
-;				bcf		Register0+.1,.1			
-;				btfsc	INDF0,.2			
-;				bcf		Register0+.1,.2			
-;				btfsc	INDF0,.3			
-;				bcf		Register0+.1,.3			
-;				btfsc	INDF0,.4			
-;				bcf		Register0+.1,.4			
-;				btfsc	INDF0,.5			
-;				bcf		Register0+.1,.5			
-;				btfsc	INDF0,.6			
-;				bcf		Register0+.1,.6			
-;				btfsc	INDF0,.7			
-;				bcf		Register0+.1,.7			
-
 				movf	POSTDEC0,W				; järgmised 8 kanalit
 				movlw	0x00
 				movwf	INDF0
-;				btfsc	INDF0,.0				
-;				bsf		PORTD,.0
-;				btfsc	INDF0,.1				
-;				bsf		PORTD,.1
-;				btfsc	INDF0,.2				
-;				bsf		PORTD,.2
-;				btfsc	INDF0,.3				
-;				bsf		PORTD,.3
-;				btfsc	INDF0,.4				
-;				bsf		PORTD,.4
-;				btfsc	INDF0,.5				
-;				bsf		PORTD,.5
-;				btfsc	INDF0,.6				
-;				bsf		PORTD,.6
-;				btfsc	INDF0,.7				
-;				bsf		PORTD,.7
-;
-;				btfsc	INDF0,.0			
-;				bcf		Register0+.0,.0			
-;				btfsc	INDF0,.1			
-;				bcf		Register0+.0,.1			
-;				btfsc	INDF0,.2			
-;				bcf		Register0+.0,.2			
-;				btfsc	INDF0,.3			
-;				bcf		Register0+.0,.3			
-;				btfsc	INDF0,.4			
-;				bcf		Register0+.0,.4			
-;				btfsc	INDF0,.5			
-;				bcf		Register0+.0,.5			
-;				btfsc	INDF0,.6			
-;				bcf		Register0+.0,.6			
-;				btfsc	INDF0,.7			
-;				bcf		Register0+.0,.7			
 				return
 ;===============================================================================
 ; **** Salvestab parameetrid EEPROMisse ja kirjutab süsteemi *******************
@@ -5333,7 +5076,7 @@ setup_port:		movf	Register275+.1,W		; IOD ehk ANA-pordi suund. 1 = OUT
 				banksel .0
 
 				movff	Register0+.1,WREG		; taastame UIO väljundite seisu vastava registri järgi
-			andwf	Register271+.1,W		; maskeerime ANA/digi oamdusega (digi=1)
+				andwf	Register271+.1,W		; maskeerime ANA/digi oamdusega (digi=1)
 				movwf	Registertemp7
 				andlw	0x0F
 				movwf	PORTA					
@@ -5400,6 +5143,7 @@ Search_1Wire: clrf      return_value     		; set return flag to false
               goto      Wrapup           		; and get on out of here
 
 Do_reset:     call      Reset_1wire				; nööbile saabast
+			  clrwdt
               clrf      rombit_idx       		; set rom bit index to 1
               incf      rombit_idx, F
               clrf      curr_discrep     		; set descrepancy marker to 0
@@ -5414,8 +5158,6 @@ Get_2bits
               call      Readbit_1wire    		; read bit B from bus and 
               iorwf     bits,F			        ; save it
 
-;              movlw     HIGH lookup_1x
-;              movwf     PCLATH
               movf      bits,W
 			  addlw		.0
 			  btfsc	     ZERO
@@ -5429,12 +5171,6 @@ Get_2bits
 			  btfsc	     ZERO
               goto      bits_10          		; 1 read
               goto      bits_11          		; nobody there
-
-;lookup_1x:    addwf     PCL, F           		; decode the bits read
-;              goto      bits_00          		; collision detected
-;              goto      bits_01          		; 0 read
-;              goto      bits_10          		; 1 read
-;              goto      bits_11          		; nobody there
 
 bits_00:      movf      rombit_idx,W			; collision detected
               xorwf     last_discrep, W
@@ -5460,13 +5196,9 @@ _chknx2:
 ;does rombits(rombit_idx) = 0 ?
               call      GetWorkBit       		; get bit located at work(rombit_idx)
               movwf     TEMP0            		; and save
-
-;              movlw     HIGH lookup_2x
-;              movwf     PCLATH
               movf      TEMP0,w
 
-lookup_2x:  ;  addwf     PCL, F           		; quik test for 0 or 1
-			  addlw		.0
+lookup_2x:	  addlw		.0
 			  btfsc		ZERO
               goto      _zero            		; was 0
 _one:                                     		; was 1
@@ -5483,9 +5215,10 @@ _zero:
 bits_01:      goto      _storit					; 0 received
 bits_10:                                  		; 1 received
 _storit:      call      Store_Bit        		; Save it into work area at rombit_idx offset
-
+			  clrwdt
 ; Send rombit(rombit_idx) to 1-wire bus
-ack_bus:	  bcf		CARRY
+ack_bus:	  clrwdt
+			  bcf		CARRY
               rrcf       bits,W          		; get bit A into W
               call      Sendbit_1wire    		; send bit A to wire
 ; Increment rombit_idx
@@ -5511,19 +5244,16 @@ Wrapup:       return
 ; ******* I-nööbi reset *******
 ;===============================================================================
 Reset_1wire:	bcf 	_1WDAT               	; madalax
-;	bsf	INTCON,GIE
 				call	wait					; 375 uS
 				call	wait					; kokku ca. 750 uS
 	            bsf 	_1WDAT	                ; kõrgex
 				call	wait
 				call	wait					; kokku ca. 750 uS
-;	bcf	INTCON,GIE
               	return
 ;===============================================================================
 ; ******* saadab käsubaidi registrist OneWireByte I-nööbile *******
 ;===============================================================================
 Sendbyte_1wireA:movwf	OneWireByte				; seivi saadetav
-;	bcf	INTCON,GIE
 Sendbyte_1wire:	movlw	0x08					; 8 bitti
               	movwf   TEMP0
 _send_1w_lp:    clrf    TEMP1            		; Clear work area
@@ -5536,13 +5266,15 @@ _send_1w_lp:    clrf    TEMP1            		; Clear work area
               	call    Sendbit_1wire    		; send it out
               	decfsz  TEMP0,F         		; 8 bitti ok ?
                	goto     _send_1w_lp      		; vara veel
-; 	bsf	INTCON,GIE
              	return
 ;===============================================================================
 ; ******* saadab käsubiti I-nööbile *******
 ;===============================================================================
-Sendbit_1wire:	bcf	INTCON,GIE
-  movwf   TEMP1
+Sendbit_1wire:	btfsc	noints
+				goto	sb1w1
+				bcf	INTCON,GIE
+				bcf		INTCON,PEIE			
+sb1w1:			movwf   TEMP1
               	bcf     _1WDAT	         		; madalax
               	btfsc   TEMP1,0 
                	bsf     _1WDAT	        		; pulsi lõpp kui bitt oli 1
@@ -5550,13 +5282,15 @@ Sendbit_1wire:	bcf	INTCON,GIE
 				call	wait_x
 	            bsf     _1WDAT        			; pulsi lõpp kui bitt oli 0
               	nop    							; Trec
-	bsf	INTCON,GIE
+				btfsc	noints
+				return
+				bsf		INTCON,PEIE			
+				bsf	INTCON,GIE
 	            return
 ;===============================================================================
 ; ******* loeb vastusbaidi I-nööbist registrisse OneWireByte *******
 ;===============================================================================
 Readbyte_1wire:	movlw   d'8'
-;	bcf	INTCON,GIE
                	movwf   TEMP0
 _read_1w_lp:  	call    Readbit_1wire	   
               	movwf   TEMP1            		; Save the bit read
@@ -5567,18 +5301,18 @@ _read_1w_lp:  	call    Readbit_1wire
 	            decfsz  TEMP0,F		 	        ; 8 bitti OK?
                	goto     _read_1w_lp      		; vara veel
               	movf    OneWireByte,W		    ; jah, tulemus W-sse
-; 	bsf	INTCON,GIE
              	return                     ;
 ;===============================================================================
 ; ******* loeb vastusbiti I-nööbist *******
 ;===============================================================================
-Readbit_1wire:	bcf	INTCON,GIE
-  bcf    	_1WDAT	         		; taktipulss - madalax
+Readbit_1wire:	btfsc	noints
+				goto	rb1w1
+				bcf	INTCON,GIE
+				bcf		INTCON,PEIE			
+rb1w1:			bcf    	_1WDAT	         		; taktipulss - madalax
 				nop
 	            bsf    	_1WDAT	         		; taktipulss - kõrgex
-;				bsf		pank					; lülitame nööbi otca sisendiks
 				bsf		TRIS_1WDAT
-;				bcf		pank
 	            clrf    TEMP1            		; Assume incomming bit is 0
 				movlw	.12						; oota 12uS
 				call	wait_x
@@ -5587,22 +5321,20 @@ Readbit_1wire:	bcf	INTCON,GIE
 				movlw	.47						; oota 47uS
 				call	wait_x
               	movf    TEMP1,W
-;				bsf		pank					; lülitame nööbi otca väljundiks
 				bcf		TRIS_1WDAT
-;				bcf		pank
-	bsf	INTCON,GIE
+				btfsc	noints
+				return
+				bsf		INTCON,PEIE			
+				bsf	INTCON,GIE
 	            return
 ;===============================================================================
 ; Store_Bit võtab bitt A (bits.1) ja salvestab alasse work, offset rombit_idx
 ; bits.1 -> work0..work7(rombit_idx)
 ;===============================================================================
 Store_Bit:    call      SetupFSR         		; converdi rombit_idx mälu aadressiks
-;              movlw     HIGH SetWorkBit
-;              movwf     PCLATH            
               rrcf       bits, W          		; loe bit.1 value right justified into W
               andlw     b'00000001'     		; lolle aadresse ei luba
 			  btfsc		ZERO
-;              addwf     PCL, F           		; quick test for 0 or 1
               goto      ClrWorkBit       		; must be 0 (clr bit)
 SetWorkBit:	                               		; must be 1 (set bit)
 			movf	TEMP2,W
@@ -5635,9 +5367,6 @@ SetWorkBit:	                               		; must be 1 (set bit)
 			goto	set6
 			goto	set7
 
-;              bcf		CARRY
-;              rlcf       TEMP2, W         		; get bit position * 2 (0, 2, 4 .. 14)
-;              addwf     PCL, F           		; bump PC, turn bit on then return
 set0:              bsf       INDF0, 7
               return
 set1:              bsf       INDF0, 6
@@ -5655,11 +5384,6 @@ set6:              bsf       INDF0, 1
 set7:              bsf       INDF0, 0
               return
 ClrWorkBit
-;              movlw     HIGH ClrWorkBit
-;              movwf     PCLATH
-;              bcf		CARRY
-;              rlcf       TEMP2, W         		; get bit position * 2 (0, 2, 4 .. 14)
-;              addwf     PCL, F           		; bump PC and turn it off then return
 			movf	TEMP2,W
 			sublw	.0
 			btfsc	ZERO
@@ -5709,12 +5433,6 @@ clr7:              bcf       INDF0, 0
 ;GetWorkBit -- rk0..work7(rombit_idx) -> W
 ;===============================================================================
 GetWorkBit:   call      SetupFSR         		; viita soovitud bitile
-;              movlw     HIGH GetWorkBit
-;              movwf     PCLATH
-;              bcf		CARRY
-;              rlcf       TEMP2, W         		; get bit position * 2 into w
-;              addwf     TEMP2, W         		; compute w = bit offset * 3 (0, 3, 6 ...)
-;              addwf     PCL, F           		; bump PC to jump to appropriate test
 			  movf		TEMP2,W
 			  sublw		.0
 			  btfsc		ZERO
@@ -6476,7 +6194,7 @@ init:
 				movlw	0xC4					; serial ja RdRxD on sisend, DIR ja muud väljunditeks (v.a. 1Wire data otc ja C3 mis oli enne reset2)
 				movwf 	TRISC 
 				banksel PORTC    		 
-				movlw	0xC8;7					; port sellisesse lähteseisu (n_reset1 teisipidi)
+				movlw	0xCF;8;7					; port sellisesse lähteseisu (n_reset1 teisipidi) Viimane asi - C0 ehk 1WSPU püsti
 				movwf 	PORTC 
 				banksel TRISD     		 
 				movlw	0x00					; kõik väljunditeks
@@ -6548,7 +6266,9 @@ relax1:			call	wait					; 375 uS
 				movwf	IOCB					; lubame kõik pordi B muutuse katckestused
 				banksel	.0
 				bcf		INTCON,T0IE
-				bcf		INTCON,PEIE			
+				bcf		INTCON,PEIE	
+
+				bsf		CCPTMRS,C2TSEL		
 ;--- Variaablid ----------------				; muu pudi
 				movf	DinPort,W
 				movwf	dinpress
@@ -6590,13 +6310,18 @@ ds2438loop:		movlw	0x10
 				goto	ds2438loop
 
 ;--- Dallase andurite avastamine ----------------
-discovery:		call    Search_1Wire_init		; Dallase lugemine nulli
+discovery:		clrwdt
+				call    Search_1Wire_init		; Dallase lugemine nulli
 				bcf		nomoreds2438			; DS2438-d pole veel piisavalt leitud
 				bcf		temper					; DS1820-d pole veel piisavalt leitud
 				clrf	DS1820found
 				clrf	DS2438found
 				clrf	DallasState
 				clrwdt                    		; WDT nullida 
+				bsf		noints
+;	      goto    _search_end     		; DEBUG 1W andureid ei ole
+
+
 _search_next:	call    Search_1Wire     		; käse otsida              
 				clrwdt                    		; WDT nullida 
             	btfss   return_value,0  		; Oli midagi ?
@@ -6686,14 +6411,7 @@ _search_end:	movf    DS1820found,W			; enam ei leia kuid kas enne leiti miskit ?
 				movwf	sekunditmr
 _search_done:	clrwdt                    		; WDT nullida 
 				clrf	Measflags
-
-				movlw	0x04					; Capture igal langeval frondil
-				banksel	CCP2CON
-				movwf	CCP2CON
-				banksel	PIE3
-				bsf		PIE3,CCP2IE
-				banksel	.0
-
+;				bcf		noints
 				return
 ;________________________________________________________
 ajupesu:		LFSR	.0,.0					; ajupesu
@@ -6719,7 +6437,7 @@ e_ser:						db 0x1A				; R273 seriali ja sisendite lugemise parameetrid: vaata a
 e_IOD:						db 0x00				; R275 ANA-pordi (UIO) suund, 1= väljund, bitthaaval)
 e_anadigi:					db 0x00;C0				; R271L analoogpordi seisund stardil - analoog või digi. 1= digi
 e_devtype					db 0xF1				; R256
-e_firmwarenr				db 0x02,0x0D		; R257H ja L: F/w HIGH ja LOW
+e_firmwarenr				db 0x02,0x0F		; R257H ja L: F/w HIGH ja LOW
 e_reset1:					db 0x02,0x58,0x05,0x1E		; R276,R277 60 sekundit, 5 sekund, 30 sekundit
 e_reset2:					db 0x02,0x58,0x05,0x64		; R278,R279 600 sekundit, 5 sekund, 64 sekundit
 e_xor:						db 0xFF				; R271H sellega XORitakse ANA-pordi sisendit (et teha juhitav aktiivne HI/LO

@@ -207,6 +207,7 @@
 ; 29.9.: DS2438 lugemine oli piiratud 8 anduriga. Peab olema 9.
 ; 6.10.: DS2438 aadressi rehkendamine vale - fiksed nüüd.
 ; 17.10.: katckestuste prioriteedi tõttu tuli ka discovery ajal katckestus ja asi tuxis. noints lipuga määrame kas 1W rutiinis katckestusi lubada või mitte. Versioon F. Ehk lõplik...
+; 18.10.: 1W andurite loendamise piiri viga - oleks lugenud 18-ni. Fixed. Ver.: 0x10
 ;===============================================================================
 ;=============================================================================== 
 ;*********************** Raudvärk **********************************************
@@ -311,8 +312,8 @@
 ; b5,6 - ei kasuta
 ; b7 - paarsuse bitt, (0= even parity), default EVEN
 ;****** Dallase kräpp *******
-#define MaxDS1820Sensors	.9*.2				; rohkem ei mahu mällu ää...
-#define MaxDS2438Sensors	.9*.2				; rohkem ei mahu mällu ää...
+#define MaxDS1820Sensors	.9;*.2				; rohkem ei mahu mällu ää...
+#define MaxDS2438Sensors	.9;*.2				; rohkem ei mahu mällu ää...
 #define DS1820ID		0x28					; DS18B20 family code
 #define DS2438ID		0x26					; DS2438 family code
 #define	ConvertT		0x44					; käsk: mõõda temperatuuri (mõlematele anduritele)
@@ -6367,7 +6368,7 @@ dl_mv_loop:		movff	POSTINC1,POSTINC0
 				goto	dl_mv_1
 				incf	DS2438found,F			; DS2438 juures
 				movlw    MaxDS2438Sensors
-				xorwf    DS2438found,W
+				subwf    DS2438found,W
 				btfss    ZERO			        ; kas piir käes ?
 				goto	_search_next			; eip, võta nekst Dallase mölakas
 				bsf		nomoreds2438			; DS2438-d on leitud max kogus, rohkem enam ei luba
@@ -6375,7 +6376,7 @@ dl_mv_loop:		movff	POSTINC1,POSTINC0
 
 dl_mv_1:		incf	DS1820found,F			; loendame andureid
 				movlw    MaxDS1820Sensors
-				xorwf    DS1820found,W
+				subwf    DS1820found,W
 				btfss    ZERO			        ; kas piir käes ?
 				goto	_search_next			; eip, võta nekst Dallase mölakas
 				bsf		temper					; DS1820-d on leitud max kogus, rohkem enam ei luba
@@ -6437,7 +6438,7 @@ e_ser:						db 0x1A				; R273 seriali ja sisendite lugemise parameetrid: vaata a
 e_IOD:						db 0x00				; R275 ANA-pordi (UIO) suund, 1= väljund, bitthaaval)
 e_anadigi:					db 0x00;C0				; R271L analoogpordi seisund stardil - analoog või digi. 1= digi
 e_devtype					db 0xF1				; R256
-e_firmwarenr				db 0x02,0x0F		; R257H ja L: F/w HIGH ja LOW
+e_firmwarenr				db 0x02,0x10		; R257H ja L: F/w HIGH ja LOW
 e_reset1:					db 0x02,0x58,0x05,0x1E		; R276,R277 60 sekundit, 5 sekund, 30 sekundit
 e_reset2:					db 0x02,0x58,0x05,0x64		; R278,R279 600 sekundit, 5 sekund, 64 sekundit
 e_xor:						db 0xFF				; R271H sellega XORitakse ANA-pordi sisendit (et teha juhitav aktiivne HI/LO

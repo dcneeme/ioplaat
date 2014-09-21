@@ -211,7 +211,161 @@
 ; 19.10.: reset_pwm ei lülitanud TMR0 välja. Testida ! Ver 0x11. 
 ; 20.10.: TMR0 siiski pidi käima sest muidu ei toimi 1-impulsid. Stardil Keelasin PEIE, stardib stabiilsemalt küll! (v.: 0x02 0x11)
 ; 24.10.: viga reg 0, 1 lugemisel (mujal ka) - enne adr arvutamist puhvris (rlcf) tuli Cy nullida ! Ver 02, 12
+; 26.10.: Reg150=0 kirjutamisel nullib nüüd õigesti kõik pulsid. Ver.: 2,14
+; 27.10.: 1 pulsid töötavad ka siis kui per = 0. Kirjutamisel Reg150=0 ei tehta enam midagi erilist. Ver.: 2,15
+; reset_pwm'is ei tohtinud _1mscount=4 teha kui per=0.
+; toitekatckestuse peale kinni jooxmisel tuli EECON1 nullida ja siis uuesti oma aadress laadida. V 2,16
+; lisasin EECON1=0 initisse, nii on õigem. Töötab !
+; 28.10.: uued ettepanekud:
+; 1) viia kogu ANA konf (in-out, ai-di) yhte registrisse 275.
+; 2) jätta reg 271 yleni di inversiooni bitmapiks, nii DI kui ANA pordile
+; 3) muuta di inversioonibittide tähendust registris 271, st mahatõmbamisel aktiivse oleku annaks bitiväärtus 1. siis on väljundi ja sisendi aktiivsused omavahel  vastavuses, mitte inverteeritud, nagu praegu.
+; ANA konfi saaks aga yhte registrisse 275 nii:
+; - ana-digi valikuks MSB, mis enne oli kasutamata
+; - in-out valik jäägu LSB nagu praegu
+; 29.10.: Tehtud, testima Neemele. Ver 2,17h. NB! Digi XOR mõjub vaid sisenditele aga mitte nt. wiegandile
+; 30.10.: korduvpulsside nullimine. Ver 2,18. Testima! Etteantud kontrollkäskudega toimib. Perioodi piir millal nullitakse on 2.
+; 31.10.: R271 MSB ja LSB vahetuses. Sisendeid loetakse inversiooniga. Fixed tehes comf ja siis xor (Ain_0, Din_0). V.: 2,19
+; lisatud lugemise kaitsed. Ver sama.
+; 27.12.: modb_write juures loendite aadress sai alati +1, fiksed (liita 164 mitte 165, read'is oli see juba parandet...) Ver.: 2, 1A
+; 29.12.: kaitsebitid ei lubanud eepromi kirjutamist !
+; 28.1.:2014: READ reg 273 teeb reseti ja annab vea - fixed: chk_alg5 juures. Saatmisel pidi jupitama _ jah, mõtleb tervelt 30us kuna prose on aeglane (paarsuse arvutus). Ver.: 2,1B
+; muudatus reseti pulssides:
+; praegu
+; 276 RW reset1 (USB), toite pealetuleku kaitse aeg
+; 277 RW reset1 (USB), pulsi kestus (MSB) ja rakendumise aeg (LSB)
+; 278 RW reset2 (Phone Power Button?), toite pealetuleku kaitse aeg
+; 279 RW reset2 (Phone Power Button?), pulsi kestus (MSB) ja rakendumise aeg (LSB)
+;
+;tulevikus
+; 276 RW reset1 (USB), rakendumise aeg 16bit, sekundites
+; 277 RW reset1 (USB), pulsi kestus 16 bit, sekundites
+; 278 RW reset2 (Phone Power Button), rakendumise aeg 16bit, sekundites
+; 279 RW reset2 (Phone Power Button), pulsi kestus 16 bit, sekundites
+; toite pealetuleku kaitse aeg jääb ära !
+; chk_alg5 juures: ei tee enam reset1-pulssi peale reg273 kirjutamist. Saab olema ver 2,1C
+; modb_multikulti juures tuleb veel lubada loendite kirjutamine aga mitte hetkel...
+; vigade parandus, ver 2,1D (31.1.2014)
+; lisatud multikulti luba loenditele + fiks pwmi multikulti jaoks (sama ka loenditele) Ver.: 2,1E)
+; selgus, et viited saates iga baidi tagant tekitab PWMi katckestus. Neeme mõtleb, mida teha...
+; PWM iga 250 us tagant, kestus ca 180 us...teebki pausi ca 750us. Las mõtleb mis nüüd saab...
+; 16.2. uued soovid: bootloader ja serial nr. register mitte kirjutatavaks.
+; kokkuleppeline ploki pikkus võiks 128 baiti olla. siis mahub modbus sõnumisse kindlasti ära.
+; oodatava koodi pikkuse saab bootloaderile teada anda, seerianr ja baitide arv sobib. sellele voiks lubatud ploki pikkusega vastata.
+; peale iga ploki vastuvotmist voiks vastata vastuvoetud ploki jarjekorra numbriga, lubatud plokisuurust ja teavitatud mahtu arvestades - selle alusel saab ka master aru,
+; kas upload edeneb edukalt voi on midagi vahele jaanud. vastuvoetud maht vastusena oleks kogu aeg yhesugune ega annaks infot, kas midagi kaduma laks.
+; kui viimane plokk edukalt vastu voetud, siis on ploki number sellele vastav. ega siit edasi polegi rohkem midagi signaliseerida vaja, edasi peaks toimuma 
+; mode registri muudatus ja reset.
+; kui midagi laheb valesti - pikk timeout - siis hyppaks pic lihtsalt algseisu, kus ootab ser nr ja baitide arvu. eraldi errrorloaderit pole vaja. eelmise katse ebaedu
+; kohta voib anda infot vastuvoetud ploki jarjekorranr registris vanima biti yleslykkamisega - siis saaab aru, mitmenda edukalt vastuvoetud ploki jarel pic arvates
+; viga tekkis. registri algseis oleks 0.
+;
+; aga ainult loetav 32bit seerianumber on juba olemas, reg 258-259. hea oleks, kui seda yle programmeerida ei saaks, isegi kui tahaks.
+; 17.2.: Reg 258,259 kirjutamine keelatud. Ver.: 2.20
+; 18.2.: Reg 276,277 taastamise viga "R1zero" juures: pidi movff REgxxx->WREG mitte vastupidi ! Ver.: 2.21
+; 19.2.: R258,9 kirjutamisel ei antud viga, nüüd annab (oleks pidanud ka enne andma !?). R276 default väärtus 00B4. ID = 0000.  V 2,22
+; 19.2.: R276/7 ja 278/9 taastamise viga "reload_side's" fiksed. R258,9 viga chk_alg ütles et readonly. V2,23
+; 13.3.: Ver. 2,24. CHG1 - peax vastama selle aadressiga mis saadeti ja osutus õigeks (v.a. broadcasti puhul). Nii saab aadressi muutmisel vastata senise aadressiga.
+; 15.3.: tahetakse veel 8 loendit anasisenditest. Siis bootloaderit. Ver. 2,24, bootloaderit hetkel pole.
+; 19.3.: Jobud !!! Ana loendid peaksid olemaseespool altes adr. 384 dec. Hetkel vist vastus lisaks 2 baiti nihkes paremale ? Näputööd alga ! Multikulti kirjutamisel oli viga - 1 baidi võrra nihkes. Kas see põhjustas PWMi imelikku käitumist ? V 2,25.
+; 20.3.: lisaloendite r/w korras aga loendamine vale. Viga: lastinputs1 asemel ajuti lastinputs. V 2,26
+; 23.3.: DIN nooremad loendid ei töötanud kuna neil polegi katkestusi. Ringi tehtud. A-in loendid töötasid ! V 2,27
+; 24.3.; kui reseti viide anti 0, siis pulssi ei tekita. Ver.: 2,28
+; 8.7.2014.: 1-juhe-andurite aadresside salvestamine ja lukustamine: tuleb sisse seada registriaadresside lukustamine registri 699 sisu kaudu. Kui sellel registriaadressil on 
+; (vaike)väärtus 0, määratakse andurite järjekord iga restardi ajal uuesti. Kui selles on 1, kasutatakse viimase registriväärtuse 0 ajal toimunud restardil määratud järjekorda, 
+; mida enam ei muudeta. Puuduvate (mittevastavate) temperatuuriandurite data on 4096, lisandunud järjekorras seni puuduvaid andureid ignoreeritakse.
+; Lukustamine mõjutab kõiki 1-wire andureid, sh ka DS2438 registreid 700..785
+; NB! peaks 699 lugemisel piirama vaid 1 registri peale !...
+; 9.7.: väike fiks. Ver 2.29. Neemele testida.
+; 15.7.: fiksitud, töötab (testitud). Neemele. Edasi teeme uut fiksi sisendite stardivea juures. Koopia !
+; 15.7.: sisendite viga (stardil) fiksed - stardil laeti comf portb -> register 1. Ver.2.2A
+; 18.7.: fiks DIN4..7 juures + eriti 4 juures. R276 algselt = 0 Ver 2,2B.
+; 19.7.: fiks ei mõjunud st. loendi 4 loeb meeletult palju !?
+; 22.7.: väidetavalt on viga siis kui debounce sees. Ilma on ok aga 4 esimest loendit ei tööta.
+; loendite taimerikatckestuse (dinx_stk jne)juurest paar rida ää. Kas aitab ? in_debounce bitt nüüd teistpidi. Ver 2,2C.
+; vaja veel tõsta lastinputsX biti nullimine veidi edasi kuni debounce tehtud. Ikka 2,2C
+; Vahekoopia. Teeme kõik loendid ringi taimeri peale. sensXtmron ja sensXtmr-id võib välja visata kui vaja. Miskipärast ei toimi, tagasi!
+; toimib küll kui vead ära parandada ! Ver.: 2,2C sest eelmised olid lihtsalt vigased!
+; enne: initi lõppu veelkord "reset_ser1", nüüd vastab ka 1. päringule. Ver.: 2,2D
+; 30.7.: proovime takti 4* üles pinistada... Ver.: 2,2E
+; muudatused:
+; - 		CONFIG	 PLLCFG = ON         	; Enabled
+; - Taimer 0
+;				movlw	B'01000101'				; 8 bitine, 1:64 prescaler T0-le, taimerina, seisma !
+;				movwf	T0CON					
+; - Taimer 1: T1reso=c9FF
+; - Taimer 2: T2CON oli 0x01 -> 0x02 (prescaler 1:4 asemele 1:16)
+; - Taimer 3: T3reso=E24C
+; - A/D muundi: 
+; 				MOVLW 	B'10111110' 			; right justified,-, 20 TAD, FOSC/64
+;				MOVWF 	ADCON2 					
+; - tema 				MOVLW 	B'10111110' 			; right justified,-, 20 TAD, FOSC/64
+;				MOVWF 	ADCON2 					
+; - measure juures kordame sdly rutiini 4 korda et saada kokku 278...us 
+;				movlw	B'00100010'				; paarsus puudub: 8 bitine saade
+;				banksel	TXSTA1
+; 31.7.: call dly kah ära jäetud - polevat vaja
+; - main juures:
+;				movlw	B'00001000'				; RBIE int lubada, TMR0IE-d mitte !
+; 31.7.: setup_ser juurde veel:
+;;				movlw	B'01100111'				; paarsuse kalkuleerimine - eeldame: 9 bitine saade
+;				movlw	B'01100011'				; paarsuse kalkuleerimine - eeldame: 9 bitine saade, SYNC=BRGH=BRG16=0
+;				btfsc	Register273+.1,.7		; paarsus even (0) või puudub (1) ?
+; Ver.: 2,2F Testida ! Eriti seda, kas yxik-pwm nüüd töötab.
+; 4.8.: PWMi vea fiks (T0IE jms võeti mitu korda maha!).
+; 5.8.: sendbit ja readbit rutiinid parandet - suudab kaablikeraga koos töötada. Ver 2,30.
+; 5.8.: T0int lubatud alati. PWM toimib õigesti aga pulsi pikkus kõigub.
+; 6.8.: pwmenabled välja. PWMi fiks (movff x,W ei ole sama mis x,WREG !) Ver 2,32. 1ms -> 0,75 jne  ?
+; 6.8.: perioodi kvandiks taheti 1ms (250us asemel).T0reso=53h
+; 10.8.: periood endiseks tagasi. Veel soove:
+;1. kirjutades registrisse 999 koodi dc1a võiks toimuda 1wire discovery käivitamine, eeldusel et 699 sisu on 0.
+;2. kirjutades 999 sisse koodi feed võiks käivituda reset1 hoolimata 276 sisust ja kestya vastavalt 277 poolt määratule.
+;3. registrid 650... ja 750... võiks olla ka kirjutatavad, mis tähendab, et ka ilma discoverita on võimalik andurite asukohad paika panna. see on mugav siis, kui mingi andur tuleb vahetada voi midagi vaja lisada ja ei teha kõiki juba defineeritud andureid teise kohta saata. kirjutamine oleks lubatud 699 sisust sõltumata.
+;4. kui saab, võiks mõlemat tüüpi 1w andurite arvu ka suurendada, kuni 16-ni. siis on viimane 1w id register 698 või 798.
+; 14.8.: discovery ei jooxe enam kokku kui  liinil lühis ! Ver 2,33
+; 14.8.: reg. 999 lisakäsud olemas ja justqi töötavad. Ver 2,33 ikkagi. Neemele testima
+; 14.8.: punkt 3 ka tehtud. Simus töötab aga püüton vaid susiseb - vist on vigane. Neeme pusib...
+; 17.8.: multikulti viga fiksed. Versioon ikka sama. Kirjutab eelmise vigase lihtsalt üle !
+; 24.8.: saadetud 1W ID-d tuleb salvestada ka!
 ;===============================================================================
+	include "P18F46K80.inc"  	
+  	LIST   P=PIC18F46K80
+;**** Prose konfi (ropud :) sõnad ****
+;Program Configuration Register 1H
+		CONFIG	 FOSC = HS1				; medium power osc
+		CONFIG	 RETEN = OFF			; ULP regulator OFF
+		CONFIG	 INTOSCSEL = HIGH 		; in Low-power mode during Sleep
+		CONFIG	 SOSCSEL = DIG         	; Digital (SCLKI) mode
+		CONFIG	 XINST = OFF          	; Disabled
+		CONFIG	 PLLCFG = ON         	; Enabled
+		CONFIG	 FCMEN = OFF          	; Disabled
+		CONFIG	 IESO = OFF          	; Disabled
+		CONFIG	 PWRTEN = ON          	; Enabled
+		CONFIG	 BOREN = SBORDIS      	; Enabled in hardware, SBOREN disabled
+		CONFIG	 BORV = 0	          	; 3.0V
+		CONFIG	 BORPWR = LOW         	; BORMV set to low power level
+;		CONFIG	 WDTEN = OFF          	; WDT disabled in hardware; SWDTEN bit disabled
+		CONFIG	 WDTPS = 256		   	; 1:16 ehk ca 1,023 s
+		CONFIG	 WDTEN = SWDTDIS        ; WDT enabled in hardware; SWDTEN bit disabled
+		CONFIG	 MCLRE = OFF          	; MCLR Disabled, RG5 Enabled
+		CONFIG	 STVREN = OFF         	; Disabled
+        CONFIG	 CP0 = ON     
+        CONFIG	 CP1 = ON     
+        CONFIG	 CP2 = ON     
+        CONFIG	 CP3 = ON     
+;        CONFIG	 CPB = ON     
+;        CONFIG	 CPD = ON     
+;		CONFIG	 WRT0 = ON   
+;		CONFIG	 WRT1 = ON   
+;		CONFIG	 WRT2 = ON   
+;		CONFIG	 WRT3 = ON   
+;		CONFIG	 WRTC = ON   
+;		CONFIG	 WRTB = ON   
+;		CONFIG	 WRTD = ON   
+;				errorlevel -302					; Compaileri vingumised ära
+;				errorlevel -305
+;				errorlevel -306 
+	errorlevel 0,-305,-302
 ;=============================================================================== 
 ;*********************** Raudvärk **********************************************
 ;*** Side ***
@@ -238,14 +392,22 @@
 ;#define Ana7			PORTE,.2				; analoogsisend 8
 
 #define DinPort			PORTB
-#define Din0			PORTB,.0				; digisisend 1
-#define Din1			PORTB,.1				; digisisend 2
-#define Din2			PORTB,.2				; digisisend 3
-#define Din3			PORTB,.3				; digisisend 4
-#define Din4			PORTB,.4				; digisisend 5
-#define Din5			PORTB,.5				; digisisend 6
-#define Din6			PORTB,.6				; digisisend 7
-#define Din7			PORTB,.7				; digisisend 8
+;#define Din0			PORTB,.0				; digisisend 1
+;#define Din1			PORTB,.1				; digisisend 2
+;#define Din2			PORTB,.2				; digisisend 3
+;#define Din3			PORTB,.3				; digisisend 4
+;#define Din4			PORTB,.4				; digisisend 5
+;#define Din5			PORTB,.5				; digisisend 6
+;#define Din6			PORTB,.6				; digisisend 7
+;#define Din7			PORTB,.7				; digisisend 8
+#define Din0			Registertemp5,.0
+#define Din1			Registertemp5,.1
+#define Din2			Registertemp5,.2
+#define Din3			Registertemp5,.3
+#define Din4			Registertemp5,.4
+#define Din5			Registertemp5,.5
+#define Din6			Registertemp5,.6
+#define Din7			Registertemp5,.7
 
 ;*** väljundid ***
 #define DoutPort		PORTD
@@ -301,11 +463,15 @@
 #define	serialtime			0x06				; 30 ms käsu laekumise aega alates 1. baidist
 #define sekundiaeg			.100
 #define _10sekundiaeg		.1;0
-#define	T1resoL				0x7F				; 10ms aeg @ 11.0592 MHz
-#define	T1resoH				0xF2					
-#define	T3resoL				0x92;7F				; 5,5ms aeg @ 11.0592 MHz
-#define	T3resoH				0xF8;F2					
-#define	T0reso				.214				; 250 us aeg @ 11.0592 MHz
+;#define	T1resoL				0x7F				; 10ms aeg @ 11.0592 MHz
+;#define	T1resoH				0xF2					
+#define	T1resoL				0xFF				; 10ms aeg @ 44.2368 MHz
+#define	T1resoH				0xC9					
+;#define	T3resoL				0x92				; 5,5ms aeg @ 11.0592 MHz
+;#define	T3resoH				0xF8					
+#define	T3resoL				0x4C				; 5,5ms aeg @ 44.2368 MHz
+#define	T3resoH				0xE2					
+#define	T0reso				.214;83;				; 250 us aeg @ 11.0592 MHz (ja nüüd ka @ 44,2368 MHz) Nüüd 1ms 0x83)
 #define senstime			0x02;1				; 5 ms debounce aega
 #define defaultserial		0x0A
 #define	wiegandtime			.3;10					; 100 ms max ooteaega (viimasest pulsist loetuna)
@@ -381,7 +547,7 @@
 #define dinpress6			dinpress,.6			
 #define dinpress7			dinpress,.7			
 
-#define ainpress0			ainpress,.0			; analoogsisenaite ajutisea bitia
+#define ainpress0			ainpress,.0			; analoogsisendite ajutised bitid
 #define ainpress1			ainpress,.1			
 #define ainpress2			ainpress,.2			
 #define ainpress3			ainpress,.3			
@@ -399,8 +565,19 @@
 #define sens7tmron			senstmrs,.6
 #define sens8tmron			senstmrs,.7
 
-#define reset1ena			flags,.0			; reset1 aeg täis tiksunud (peale pingestamist) ja nüüd saab pulssi anda kui vaja)
-#define reset2ena			flags,.1			; reset2 aeg täis tiksunud (peale pingestamist) ja nüüd saab pulssi anda kui vaja)
+;#define sens9tmron			senstmrs1,.0
+;#define sens10tmron			senstmrs1,.1
+;#define sens11tmron			senstmrs1,.2
+;#define sens12tmron			senstmrs1,.3
+;#define sens13tmron			senstmrs1,.4
+;#define sens14tmron			senstmrs1,.5
+;#define sens15tmron			senstmrs1,.6
+;#define sens16tmron			senstmrs1,.7
+
+
+#define writedsID			flags,.0			; 1 kui multikultiga saadeti dallase ID ja see tuleks nüüd seivida
+;#define special0			flags,.0
+#define counters			flags,.1			; pöörduti loendite poole
 #define reset1pulseon		flags,.2			; reseti 1 pulsi kestuse taimer käib
 #define reset2pulseon		flags,.3			; reseti 2 pulsi kestuse taimer käib
 #define wiegandAto			flags,.4		
@@ -417,7 +594,7 @@
 #define sync				flags1,.6			; kirjutati reg-e 150 mille peale syngitaxe PWMi
 #define nomoreds2438		flags1,.7
 #define Seero				flags1,.7			; PWMi pulsi lõpetamise juures
-
+ 
 #define suurem				Measflags,.0
 #define vaiksem				Measflags,.1
 #define vordne				Measflags,.2
@@ -425,43 +602,19 @@
 #define	write				Measflags,.4
 #define	broadcast			Measflags,.5
 #define noints				Measflags,.6
+#define special1			Measflags,.7
+
+#define special0			Measflags,.0
 ;**** 1-wire ****
 #define DallasState			bits
 ;=============================================================================== 
-;*********************** Raudvärk **********************************************
-	include "P18F46K80.inc"  	
-;**** Prose konfi (ropud :) sõnad ****
-;Program Configuration Register 1H
-		CONFIG	 FOSC = HS1				; medium power osc
-		CONFIG	 RETEN = OFF			; ULP regulator OFF
-		CONFIG	 INTOSCSEL = HIGH 		; in Low-power mode during Sleep
-		CONFIG	 SOSCSEL = DIG         	; Digital (SCLKI) mode
-		CONFIG	 XINST = OFF          	; Disabled
-		CONFIG	 PLLCFG = OFF         	; Disabled
-		CONFIG	 FCMEN = OFF          	; Disabled
-		CONFIG	 IESO = OFF          	; Disabled
-		CONFIG	 PWRTEN = ON          	; Enabled
-		CONFIG	 BOREN = SBORDIS      	; Enabled in hardware, SBOREN disabled
-		CONFIG	 BORV = 0	          	; 3.0V
-		CONFIG	 BORPWR = LOW         	; BORMV set to low power level
-;		CONFIG	 WDTEN = OFF          	; WDT disabled in hardware; SWDTEN bit disabled
-		CONFIG	 WDTPS = 256		   	; 1:16 ehk ca 1,023 s
-		CONFIG	 WDTEN = SWDTDIS        ; WDT enabled in hardware; SWDTEN bit disabled
-		CONFIG	 MCLRE = OFF          	; MCLR Disabled, RG5 Enabled
-		CONFIG	 STVREN = OFF         	; Disabled
-        CONFIG	 CP0 = ON     
-        CONFIG	 CP1 = ON     
-        CONFIG	 CP2 = ON     
-        CONFIG	 CP3 = ON     
-				errorlevel -302					; Compaileri vingumised ära
-				errorlevel -305
-				errorlevel -306 
-
 ; ************** Mälu jaotus **********	    	
 				cblock 0x00
 					sidetaimer					; mõõdab 30s side kadumise aega
 					sekunditmr
 					lastinputs					; PORTB sisendite eelmine seis
+					lastinputs1		
+					lastinputs2		
 					flags
 					flags1
 					sampledly					; mõõtmise Taqu viide
@@ -469,14 +622,14 @@
 					Measflags					; min/max võrdlemise lipukesed
 					serpartmp
 ; *** resettide taimerid ****
-					reset1strttmrH
-					reset1strttmrL
-					reset1pulsetmr
-					reset1dlytmr
-					reset2strttmrH
-					reset2strttmrL
-					reset2pulsetmr
-					reset2dlytmr
+					reset1pulsetmrH
+					reset1pulsetmrL
+					reset1dlytmrH
+					reset1dlytmrL
+					reset2pulsetmrH
+					reset2pulsetmrL
+					reset2dlytmrH
+					reset2dlytmrL
 ; *** käsu parseldamine jne ***
 					countH
 					countL						; ka Dallase otsimise rutiinis !
@@ -523,7 +676,9 @@
 					Registertemp7				; ajutine register modb_writes ja setup_pordis
 ; *** loendite stuff ***
 					muutus
+					muutus1
 					senstmrs
+;					senstmrs1
 ; *** Wiegand ja loendite taimerid ***
 					wiegandAtimer
 					wiegandBtimer
@@ -577,7 +732,8 @@
 ; ===== mälupank 2 =====
 					phasecounter				; jooksva perioodi number
 					RegX:.2
-					AbiPuhver:.61		        ; esialgu vaba
+					AbiPuhver:.56;8;9;61		        ; esialgu vaba
+					Register699:.2				; Kui on (vaike)väärtus 0, määratakse andurite järjekord iga restardi ajal uuesti.
 ; **** pwmi kirjutamise abi
 					Register149in:.2			; Viide ms kuni järgmise perioodi alguseni
 					Register149out:.2			; Aeg ms jooksva perioodi algusest
@@ -608,25 +764,38 @@
 					Register257:.2				; r, f/w number									0xD4,D5
 					Register258:.2				; r, serial, 1. osa (130 dec)					0xD6,D7
 					Register259:.2				; r, serial 2.osa (1...dec)						0xD8,DA
-					Register270:.2				; r/w, ADC Vref bitid 3,4,5 nagu PDF-is kirjas	0xDA,DB
-					Register271:.2				; r/w, UIO analoog/digitaalseis, 1=digisisend	0xDC,DD 			NB! Vanem bait (271+.0) on XOR-i register !!!
+					Register270:.2				; r/w, LSB.0= pwmenabled, MSB:ADC Vref bitid 3,4,5 nagu PDF-is kirjas	0xDA,DB
+; >>>CHG<<<										; PWMenabled enam ei arvesta !
+					Register271:.2				; r/w, HIGH: DI pordi XOR, LOW: AI pordi XOR mask
+; >>>CHG<<<
 					Register272:.2				; r/w,  pull-upp'ide seis ehk DO seis stardil, 1= PU sees 0xDE,DF
 					Register273:.2				; r/w, seriali parameetrid						0xE0,E1
 					Register274:.2				; r/w,  modbus'i aadress						0xE2,E3
-					Register275:.2				; analoogpordi UIO suund, 1= väljund, 0= sisend	0xE4,E5
+; >>>CHG<<<
+					Register275:.2				; r/w, HIGH: UIO analoog/digitaalseis, 1=digisisend + LOW: analoogpordi UIO suund, 1= väljund, 0= sisend	0xE4,E5
+; >>>CHG<<<
 					Register276:.2				; r/w reset 1 toite pealetulemise kaitse aeg	0xE6,E7
-					Register277:.2				; r/w reset 1 pulsi kestus (MSB) ja rakendumise aeg (LSB) 0xE8,E9
+					Register277:.2				; r/w reset 1 pulsi kestus (MSB) ja (LSB) 0xE8,E9
 					Register278:.2				; r/w reset 2 toite pealetulemise kaitse aeg	0xEA,EB
-					Register279:.2				; r/w reset 2 pulsi kestus (MSB) ja rakendumise aeg (LSB) 0xEC,ED
+					Register279:.2				; r/w reset 2 pulsi kestus (MSB) ja (LSB) 0xEC,ED
+;					Register699:.2				; Kui on (vaike)väärtus 0, määratakse andurite järjekord iga restardi ajal uuesti.
 ;					Register999					; teeb reseti !
 ; *** temperatuuri kontroll ***
-					DallasChk:.9				; kuni FF !!
- 					DS2438Chk:.9
+					DallasChk:.9				
+ 					DS2438Chk:.9				; kuni FF !!
 				endc
 ; ===== mälupank 4 =====
 ; *** loendid ja Dallase kräpp ;) ***
 				cblock 0x190					
 ; *** loendid ***
+					Loendi9:.4					; AIN 1 pulsside loendi  Reg. 384,385
+					Loendi10:.4					; 
+					Loendi11:.4					; 
+					Loendi12:.4					; 
+					Loendi13:.4					; 
+					Loendi14:.4					; 
+					Loendi15:.4					; 
+					Loendi16:.4					; 398,399
 					Loendi1:.4					; DIN 1 pulsside loendi  Reg. 400,401
 					Loendi2:.4					; 402, 403
 					Loendi3:.4					; 404, 405
@@ -693,7 +862,7 @@
 					Register150:.2				; register 150 PWMi periood 3…65535 ms (0x96)  ---> 0x320
 ; kuidas määratakse, kas antud väljund on PWMiga või tavaväljund/sisend
 ; tekitasin selleks eraldi bitmap registri, aadress naiteks 151, bitid 0-15
-					Register151:.2				; register 151. Bitt =1 siis antud pin on PWMiga hõivatud
+					Register151:.2				; register 151. Näitab väljundite hetkeseisu PWMi puhul
 ; *** PWMi tööregistrid ****
 					pwm0work:.2
 					pwm1work:.2
@@ -802,6 +971,9 @@
 
 #define 		in_sticky		Register273+.1,.4
 #define 		in_debounce		Register273+.1,.3
+; **** bootloaderile ****
+#define 		BlBlockCount	dinflags
+
 ; **** serial port ****
 
 ; **** Prose lipukesed ****
@@ -809,14 +981,14 @@
 #define ZERO            	STATUS,Z 
 ; *****************************	    	
    	
-
-  
 				org	0x000
+;				goto	ErrorLoader
    				goto	main
 ;===============================================================================
 ;*********************** katckestused ******************************************
 ;===============================================================================
 				org     0x0008					; Ints HIGH
+;				goto	BootInts
 				bsf		Dir						; Dir signaal algab
 				bcf		PIE3,CCP2IE
 				bcf		PIR3,CCP2IF
@@ -850,6 +1022,7 @@ _Pop:			movff	FSRtmpL,FSR0L
 ;===============================================================================
 T0int:			bcf		INTCON,TMR0IF
 				bcf		T0CON,TMR0ON			; taimer stopp kuniks tuunime
+; bsf Dout7
 				movlw	T0reso					; lae taimer 0 (katkestus iga 250 uS tagant)
 				movwf	TMR0L
 				bsf		T0CON,TMR0ON			; taxo taas tixuma
@@ -1108,9 +1281,9 @@ Faasup8:		LFSR	.0,Register151+.0		; siia läheb kirja väljundi reaalne seis
 				subwf	phasecounter,W		
 				btfss	ZERO
 				goto	Faasup9					; ei, võta järgmine väljund
-Faasup8nf:				btfsc	RegX+.0,.0				; väljund läheb kõrgeks, kas juba on ?
+Faasup8nf:		btfsc	RegX+.0,.0				; väljund läheb kõrgeks, kas juba on ?
 				goto	Faasup9					; jah, võta järgmine väljund
-		btfss	Register0+.0,.0			; väljundi määramiseks tee XOR reg-ga D0
+				btfss	Register0+.0,.0			; väljundi määramiseks tee XOR reg-ga D0
 				goto	Faasup8_0				; D0 on 0 -> väljund = 1
 ;				btfsc	RegX+.0,.0				; väljund läheb kõrgeks, kas juba on ?
 ;				goto	Faasup9					; jah, võta järgmine väljund
@@ -1362,7 +1535,7 @@ decpertick2:	movff	pwmtmp+.0,phasetick+.0
 ; ***** pulsi lõpetamine *****
 T0intPulEnd:	decfsz	_1mscount				; 1 ms läbi ?
 				goto	T0intend				; eip, siis ei tee midagi
-				movlw	.4						; jaap, taasta 1ms loendi
+T0intPulEnd1:	movlw	.4						; jaap, taasta 1ms loendi
 				movwf	_1mscount
 				LFSR	.0,Register151+.1		; kas antud väljundi pulss vaja lõpetada ?
 FaasDn0:		LFSR	.1,pwm0work				; viita järgmisele väljundile
@@ -1834,18 +2007,26 @@ chkzero1:		movf	POSTDEC1,W				; korrigeeri pointerit
 				return
 ;===============================================================================
 ; ******* Loendite signaali muutuse INT. Reageerivad langevale frondile! *******
+; NB ! Sellel prosel pole B0..3 int-on-change omadust. Loendame taimeri katckestuses !
 ;===============================================================================
 Loendid:		movf	PORTB,W
 				movwf	dataport				; Wiegandi jaux
 				xorwf	lastinputs,W			; mis muutus ?
 				movwf	muutus
+;>>>
+				btfsc	Register273+.1,.5
+				goto	loendid1
+				btfsc	Register273+.1,.6
+				goto	loendid1
+				goto	Andur_end1				; kui Wiegand keelatud, siis ei töötle midagi
+;>>>
 				btfsc	muutus,.0				; loendi 1 ?
 				goto	counter1				; jah
 				btfsc	muutus,.1				; loendi 2 ?
 				goto	counter2				; jah
 				btfsc	muutus,.2				; loendi 3 ?
 				goto	counter3				; jah
-				btfsc	muutus,.3				; loendi 4 ?
+loendid1:		btfsc	muutus,.3				; loendi 4 ?
 				goto	counter4				; jah
 				btfsc	muutus,.4				; loendi 5 ?
 				goto	counter5				; jah
@@ -1853,16 +2034,17 @@ Loendid:		movf	PORTB,W
 				goto	counter6				; jah
 				btfsc	muutus,.6				; loendi 7 ?
 				goto	counter7				; jah
-;				btfsc	muutus,.7				; loendi 8 ?
+			btfsc	muutus,.7				; loendi 8 ?
 				goto	counter8				; jah
+			goto	Andur_end				; ja kõik !
 ; *** Loendi 1 ***
 counter1:		btfss	dataport,.0				; reageerime vaid langevale frondile
 				goto	counter1_1
 				bsf		lastinputs,.0			; oli tõusev front, updteerime sisendite eelmist seisu
 				goto	Andur_end				; ja vaatame järgmisi sisendeid
-counter1_1:		bcf		lastinputs,.0			; updteerime sisendite eelmist seisu
-				btfss	sens1tmron				; JUBA DEBOUBCEME ?
-				goto	counter1_2				; ei veel, hakkab pihta
+counter1_1:		bcf		lastinputs,.0			; updateerime sisendite eelmist seisu
+;				btfss	sens1tmron				; JUBA DEBOUNCEME ?
+;				goto	counter1_2				; ei veel, hakkab pihta
 				goto	Andur_end				; jah, vaatame järgmisi sisendeid
 counter1_2:		bsf		sens1tmron 				; taimer käima
 				goto	Andur_end				; ja kõik !
@@ -1872,8 +2054,8 @@ counter2:		btfss	dataport,.1
 				bsf		lastinputs,.1
 				goto	Andur_end	
 counter2_1:		bcf		lastinputs,.1
-				btfss	sens2tmron	
-				goto	counter2_2	
+;				btfss	sens2tmron	
+;				goto	counter2_2	
 				goto	Andur_end	
 counter2_2:		bsf		sens2tmron 	
 				goto	Andur_end	
@@ -1883,8 +2065,8 @@ counter3:		btfss	dataport,.2
 				bsf		lastinputs,.2
 				goto	Andur_end	
 counter3_1:		bcf		lastinputs,.2
-				btfss	sens3tmron	
-				goto	counter3_2	
+;				btfss	sens3tmron	
+;				goto	counter3_2	
 				goto	Andur_end	
 counter3_2:		bsf		sens3tmron 	
 				goto	Andur_end	
@@ -1894,8 +2076,8 @@ counter4:		btfss	dataport,.3
 				bsf		lastinputs,.3
 				goto	Andur_end	
 counter4_1:		bcf		lastinputs,.3
-				btfss	sens4tmron	
-				goto	counter4_2	
+;				btfss	sens4tmron	
+;				goto	counter4_2	
 				goto	Andur_end	
 counter4_2:		bsf		sens4tmron 	
 				goto	Andur_end	
@@ -2072,14 +2254,11 @@ SerInt:
 				banksel	.0
 				andlw	.6						; Viga vastuvõtul? Maskeeri tarbetud staatuse bitid
 				btfss	ZERO
-	goto e
-;				goto	reset_ser2				; oli, alusta uuesti
-	call c
+				goto	reset_ser2				; oli, alusta uuesti
 modbus_rcv:		movf	bytecnt,W				; kontrolli puhvri piire
 				sublw	RSBufLen-.1
 				btfss	CARRY
-;				goto	reset_ser2				; liiga pikk mess või miskit sassis, reset!
-	goto d
+				goto	reset_ser2				; liiga pikk mess või miskit sassis, reset!
 				bsf		SerialTimerOn	
 				banksel	RCREG1
 				movf	RCREG1,W
@@ -2160,78 +2339,18 @@ modb_r3:		movf	INDF0,W
 				movf	_RS485chk,W				; kontroll
 				subwf	INDF0,W
 				btfss	ZERO
-;				goto	reset_ser2				; viga
-	goto a
+				goto	reset_ser2				; viga
 				incf	FSR0L,F
 				movf	_RS485chkH,W			; kontroll
 				subwf	INDF0,W
 				btfss	ZERO
-	goto a
-;				goto	reset_ser2				; viga, eksiteerib via reset_ser
+				goto	reset_ser2				; viga, eksiteerib via reset_ser
 				bsf		cmd_ok					; aga märgi ära, et pakett oli ok
 				bcf		SerialTimerOn			; taimer seisma
 				banksel	PIE1
 				bcf		PIE1,RC1IE				; enne uut käsku vastuvõtu ei võta kuni senine täidetud
 				banksel	.0
 				return
-a:; bsf Dout0
-	nop
-	nop
-	nop
-	nop
-;	bcf	Dout0
-	goto	reset_ser2				; viga
-b:; bsf Dout1
-	nop
-	nop
-	nop
-	nop
-;	bcf	Dout1
-	nop
-	nop
-	nop
-	nop
-;	movff	Register274+.1,WREG		; 1. bait on slave aadress. Kas jutt mulle ?
-;				call	SendCHAR
-	nop
-	nop
-	nop
-	nop
-;	movf INDF0,W
-;				call	SendCHAR
-	nop
-	nop
-	nop
-	nop
-	goto	reset_ser1
-c:; bsf Dout2
-	nop
-	nop
-	nop
-	nop
-;	bcf	Dout2
-	return
-d:; bsf Dout3
-	nop
-	nop
-	nop
-	nop
-;	bcf	Dout3
-	goto	reset_ser2				; viga
-e:; bsf Dout4
-	nop
-	nop
-	nop
-	nop
-	bcf	Dout4
-	goto	reset_ser2				; viga
-f: ;bsf Dout5
-	nop
-	nop
-	nop
-	nop
-	;bcf	Dout5
-	return
 ;===============================================
 ; ********* käskude täitmine *******************
 ;===============================================
@@ -2244,12 +2363,10 @@ command:		LFSR	.0,Puhver				; pakett OK, täidame käsu !
 				movf	INDF0,W					; kas broadcast (adr. 0x00) ?
 				addlw	.0
 				btfss	ZERO
-;				goto	reset_ser1				; viga
-	goto b
+				goto	reset_ser1				; viga
 				bsf		broadcast				; edaspidi kuulame broadcast-käske ka kuid neile ei vasta !
 ;				call	reload_side				; oli midagi muud, teeme ikkagi sidetaimeri reload aga ei vasta;
 ;				goto	reset_ser1				; 
-;	goto b
 ;----------- CHG side reload iga baidi kuulmisel ------------------
 rcv_1:			call	reload_side				; sidetaimeri reload
 ;----------- CHG side reload iga baidi kuulmisel ------------------
@@ -2277,17 +2394,25 @@ rcv_1:			call	reload_side				; sidetaimeri reload
 reload_side:	bsf		sidetmron
 				movlw	sidetime
 				movwf	sidetaimer
-				movff	Register277,WREG		; taasta pulsi kestus
-				movwf	reset1pulsetmr		
-				movff	Register277+.1,WREG		; taasta side kadumise viiteaeg reseti 1 generaatorile
-				movwf	reset1dlytmr
+				movff	Register276,WREG		; taasta side kadumise viiteaeg
+				movwf	reset1dlytmrH
+				movff	Register276+.1,WREG	
+				movwf	reset1dlytmrL
+				movff	Register277,WREG		; taasta pulsi kestus reseti 1 generaatorile
+				movwf	reset1pulsetmrH
+				movff	Register277+.1,WREG	
+				movwf	reset1pulsetmrL
 				bsf		n_reset1				; inversioon
 				bcf		reset1pulseon			; reseti 1 pulsi generaator OHV (igaks juhux)
 rls1:;			bsf		pank1
-				movff	Register279+.0,WREG		; taasta pulsi kestus
-				movwf	reset2pulsetmr			
-				movff	Register279+.1,WREG		; side kadumise viiteaeg reseti 2 generaatorile
-				movwf	reset2dlytmr
+				movff	Register278,WREG		; taasta side kadumise viiteaeg
+				movwf	reset2dlytmrH
+				movff	Register278+.1,WREG	
+				movwf	reset2dlytmrL
+				movff	Register279,WREG		; taasta pulsi kestus reseti 2 generaatorile
+				movwf	reset2pulsetmrH
+				movff	Register279+.1,WREG	
+				movwf	reset2pulsetmrL
 				bcf		PWRSW					; reseti 2 pinn maha (igaks juhux)
 				bcf		reset2pulseon			; reseti 2 pulsi generaator OHV (igaks juhux)
 rls2:			return
@@ -2327,6 +2452,8 @@ mbr1:			bcf		writeit					; oli lugemine, ei ole vaja kirjutada
 				btfsc	pwm						; loeti pwmi registreid ?
 				goto	mbr2					; jah, FSR0 on juba laetud
 				LFSR	.0,Register0
+				btfsc	counters
+				LFSR	.0,Loendi9
 				movff	m_radrL,serpartmp
 	bcf	CARRY
 				rlcf	serpartmp,W				; liidame puhvri alguse (aadress *2)
@@ -2346,7 +2473,7 @@ mbr2:			movff	n_regH,WREG				; loetavate registrite arv (HIGH)
 				incf	bytecnt,F				; loendame baite
 				btfss	dallas					; kas dallase asjad või loendid ?
 				goto	modb_read_loop
-				movlw	.164;5
+				movlw	.164+.32;5
 				addwf	FSR0L,F
 				btfsc	CARRY
 				incf	FSR0H,F
@@ -2392,14 +2519,53 @@ modb_write:		bsf		write
 				call	validate				; kas aadress ja loetav pikkus piirides ?
 				btfsc	CARRY
 				goto	valedata				; ei ole, nii ütlegi
-				call	ch_algadr				; kas kirjutatava algusaadress on piirides ja kas lubatud kirjutada ?
+
+				movff	m_radrH,WREG			; kas register 258,259 ?
+				sublw	0x01
+				btfss	ZERO
+				goto	modb_write00
+				movff	m_radrL,WREG		
+				sublw	0x02
+				btfsc	ZERO
+				goto	m_wr_chk				; on 258, seda ei luba kirjutada kui ta sisu !=0
+ 				movff	m_radrL,WREG		
+				sublw	0x03
+				btfsc	ZERO
+				goto	m_wr_chk1				; on 259, seda ei luba kirjutada kui ta sisu !=0
+				goto	modb_write00			; on mingi muu register, vaatab edasi	
+m_wr_chk:		movff	Register258+.0,WREG		; kas R258 sisu =0 ?
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; ei, siis ei luba kirjutada !
+				movff	Register258+.1,WREG
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; ei, siis ei luba kirjutada !
+				goto	modb_write00			; Reg. 258=0 => võib kirjutada	
+m_wr_chk1:		movff	Register259+.0,WREG		; kas R259 sisu =0 ?
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; ei, siis ei luba kirjutada !
+				movff	Register259+.1,WREG
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; ei, siis ei luba kirjutada !
+				goto	modb_write00			; Reg. 259=0 => võib kirjutada	
+
+modb_write00:	call	ch_algadr				; kas kirjutatava algusaadress on piirides ja kas lubatud kirjutada ?
 				btfsc	CARRY
 				goto	valedata				; ei ole, nii ütlegi
 				btfsc	readonly				; kirjutamine lubatud ?
 				goto	valedata				; ei ole, nii ütlegi
+				btfsc	special0				; olid erikäsud ?
+				goto	modb_write2				; jah, siis vaid vastame
+				btfsc	special1				; olid erikäsud ?
+				goto	modb_write2				; jah, siis vaid vastame
 				btfsc	pwm						; loeti pwmi registreid ?
 				goto	modb_write0				; jah, FSR0 on juba laetud
 				LFSR	.0,Register0
+				btfsc	counters
+				LFSR	.0,Loendi9
 				movff	m_radrL,serpartmp
 				rlcf	serpartmp,W				; liidame puhvri alguse (aadress *2)
 				addwf	FSR0L,F
@@ -2407,7 +2573,7 @@ modb_write:		bsf		write
 				incf	FSR0H,F					; loetava registri aadress olemas !
 				btfss	dallas					; kas loendid ?
 				goto	modb_write0				; eip !
-				movlw	.165					; jah, need nati kaugemal
+				movlw	.164+.32;5					; jah, need nati kaugemal
 				addwf	FSR0L,F
 				btfsc	CARRY
 				incf	FSR0H,F
@@ -2442,6 +2608,27 @@ modb_write1:	bcf		reg0
 				goto	modb_write2
 				call	reset_pwm				; jep! reseti PWM !
 				call	reset_per				; ja tee periood nullix ja väljundid kah !
+
+				movff	Register150+.0,WREG		; kas periood < 2 ?
+				andlw	0x0F
+				btfss	ZERO
+				goto	modb_write2
+				movff	Register150+.1,WREG
+				cpfsgt	0x02
+				goto	modb_write2
+;				LFSR	.0,pwm0work				; on 0, teeme kõik korduvd pulsid ühekordseks
+				LFSR	.1,pwm0set
+				movlw	.16
+				movwf	_1mscount
+set_zer:;		bcf		POSTINC0,.7
+		;		movf	POSTINC0,W
+				bcf		POSTINC1,.7
+				movf	POSTINC1,W
+				decfsz	_1mscount
+				goto	set_zer
+				movlw	.4
+				movwf	_1mscount
+
 modb_write2:	btfsc	broadcast				; braodcast'i puhul ei vasta !
 				goto	reset_ser
 ; Vastus: ADR, CMND, ADRH,ADRL,DATAH,DATAL, CRCH,CRCL
@@ -2466,15 +2653,278 @@ xyz:			movff	Puhver+RSBufLen-.2,WREG;Puhver+.2,W
 ;===============================================
 ; kirjuta mitu registrit
 ;===============================================
-modb_multikulti:movff	m_radrL,WREG			; multi-kultit lubame vaid PWMi regitritele			
+modb_multikulti:bcf		writedsID				; oletame, et ei ole tegu Dallase ID-dega
+				movff	m_radrL,WREG			; multi-kultit lubame vaid PWMi regitritele			
 				sublw	.100-.1					; kas <100 ?
 				btfsc	CARRY
 				goto	valedata				; oli liiga madal aadress
 				movff	m_radrL,WREG				
 				sublw	.115					; kas >115 ?
 				btfss	CARRY
+				goto	mk_1					; oli liiga kõrge aadress, äkki Dallase kividele või loendid ?
+				goto	mk_pwm					; olid PWMi asjad
+
+
+mk_1:			movff	m_radrH,WREG			; kas bootloaderile ?
+				sublw	HIGH(.998)
+				btfsc	ZERO
+				goto	mk_1_2					; jep, asi läheb karmix
+; ei, kas kirjutame Dallase asju (ID-d)?
+				movff	m_radrH,XH				; adr >685 ?
+				movff	m_radrL,XL
+				movlw	HIGH(.685)
+				movwf	YH
+				movlw	LOW(.685)
+				movwf	YL
+				call	compare16_16
+				btfss	CARRY			
+				goto	validate2
+				movlw	HIGH(.649)				; adr <650 ?
+				movwf	YH
+				movlw	LOW(.649)
+				movwf	YL
+				call	compare16_16
+				btfsc	CARRY
+				goto	mk_1_1					; siis pole DS1820 ID-d
+; kalkuleeri DS1820 ID-registri aadress
+				movff	m_radrL,serpartmp
+				movlw	0x8A					; teisenda anduri aadress: high = 0, low -0x8A
+				subwf	serpartmp,F;W
+				LFSR	.0,Dallas1wa			; kirjutame DS1820 ID-desse
+				bcf		CARRY
+				rlcf	serpartmp,W				; liidame puhvri alguse (aadress *2)
+				addwf	FSR0L,F
+				btfsc	CARRY	
+				incf	FSR0H,F					; loetava registri aadress olemas !
+; kontrollime kirjutatava pikkust
+				movff	FSR0H,mb_temp1
+				movff	FSR0L,mb_temp2
+				movff	n_regH,WREG				; loetavate registrite arv (HIGH)
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; liiga pikk kirjutamise soov -> per...
+				movff	n_regL,WREG				; loetavate registrite arv (LOW)
+				bcf		CARRY
+				addwf	mb_temp2,F
+				btfsc	CARRY
+				incf	mb_temp1,F
+				movlw	HIGH(LoendiUP)
+				cpfsgt	mb_temp1
+				goto	mkd1
+				goto	valedata
+mkd1:			cpfseq	mb_temp1
+				goto	mkd2					; on OK !
+				movlw	LOW(LoendiUP)
+				cpfsgt	mb_temp2
+				goto	mkd2					; on OK !
+				goto	valedata
+mkd2:			movf	n_regH,W				; kirjutavate registrite arv (HIGH)
+				movwf	countH
+				movff	n_regL,countL
+				rlcf	countL,F				; kirjutavate registrite arv (LOW)
+				movf	countH,W				; kui kirjutatava pikkus =0, siis per...
+				addlw	.0
+				sublw	.0
+				btfss	ZERO
+				goto	mkl3a					; kirjuta !
+				movf	countL,W				
+				addlw	.0
+				sublw	.0
+				btfsc	ZERO
+				goto	valedata
+				goto	mkl3a					; kirjuta !				
+; aadressi kontroll jätkub, kas DS2438 või mis ta raisa nimi oligi...			
+mk_1_1:			movff	m_radrH,XH				; adr >785 ?
+				movff	m_radrL,XL
+				movlw	HIGH(.785)
+				movwf	YH
+				movlw	LOW(.785)
+				movwf	YL
+				call	compare16_16
+				btfss	CARRY			
+				goto	validate2
+				movlw	HIGH(.749)				; adr <750 ?
+				movwf	YH
+				movlw	LOW(.749)
+				movwf	YL
+				call	compare16_16
+				btfsc	CARRY
+				goto	mk_loendid				; siis pole DS2843 ID-d. Ehk loendid ?
+; kalkuleeri DS2438 ID-registri aadress
+				movff	m_radrL,serpartmp
+				movlw	0x8A					; teisenda anduri aadress: high = 0, low -0x8A
+				subwf	serpartmp,F;W
+				LFSR	.0,DS24381wa			; kirjutame DS2843 ID-desse
+				bcf		CARRY
+				rlcf	serpartmp,W				; liidame puhvri alguse (aadress *2)
+				addwf	FSR0L,F
+				btfsc	CARRY	
+				incf	FSR0H,F					; loetava registri aadress olemas !
+; kontrollime kirjutatava pikkust
+				movff	FSR0H,mb_temp1
+				movff	FSR0L,mb_temp2
+				movff	n_regH,WREG				; loetavate registrite arv (HIGH)
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; liiga pikk kirjutamise soov -> per...
+				movff	n_regL,WREG				; loetavate registrite arv (LOW)
+				bcf		CARRY
+				addwf	mb_temp2,F
+				btfsc	CARRY
+				incf	mb_temp1,F
+				movlw	HIGH(ch1meascnt)
+				cpfsgt	mb_temp1
+				goto	mkdd1
+				goto	valedata
+mkdd1:			cpfseq	mb_temp1
+				goto	mkdd2					; on OK !
+				movlw	LOW(ch1meascnt)
+				cpfsgt	mb_temp2
+				goto	mkdd2					; on OK !
+				goto	valedata
+mkdd2:			movf	n_regH,W				; kirjutavate registrite arv (HIGH)
+				movwf	countH
+				movff	n_regL,countL
+				rlcf	countL,F				; kirjutavate registrite arv (LOW)
+				movf	countH,W				; kui kirjutatava pikkus =0, siis per...
+				addlw	.0
+				sublw	.0
+				btfss	ZERO
+				goto	mkl3a					; kirjuta !
+				movf	countL,W				
+				addlw	.0
+				sublw	.0
+				btfsc	ZERO
+				goto	valedata
+				goto	mkl3a					; kirjuta !
+; bootloaderile kirjutamine !
+mk_1_2:			movff	m_radrL,WREG			
+				sublw	LOW(.998)			
+				btfss	ZERO
+				goto	mk_loendid				
+				movff	n_regH,WREG				; jah, saadetakse slave ID ja blokkide arv: registrite arv peab olema 2
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; -> per...
+				movff	n_regL,WREG				
+				sublw	.2
+				btfss	ZERO
+				goto	valedata				
+				LFSR	.2,Puhver+.6			; daata tuleb siit 
+				movff	Register258+.1,WREG		; peab olema selle slave ID
+				subwf	POSTINC2,W
+				btfss	ZERO
+				goto	valedata				
+				movff	Register259+.1,WREG		; õige ?
+				subwf	POSTINC2,W
+				btfss	ZERO
+				goto	valedata				
+				movff	POSTINC2,BlBlockCount	; 64-baidiste blokkide arv
+
+				call	paketialgus				; kirjuta paketi algus (ADR, CMND) puhvrisse	
+				movff	m_radrH,WREG			; start aadress (998)
+				movwf	POSTINC1
+				call	mb_crc16
+				incf	bytecnt,F				; loendame baite
+				movff	m_radrL,WREG
+				movwf	POSTINC1
+				call	mb_crc16
+				incf	bytecnt,F				; loendame baite
+				movlw	.0						; 64-baidiste blokkide arv
+				movwf	POSTINC1
+				call	mb_crc16
+				incf	bytecnt,F				; loendame baite
+				movff	BlBlockCount,WREG		
+				movwf	POSTINC1
+				call	mb_crc16
+				incf	bytecnt,F				; loendame baite
+				movf	_RS485chk,W				; ja summa
+				movwf	POSTINC1
+				incf	bytecnt,F				; loendame baite
+				movf	_RS485chkH,W	
+				movwf	POSTINC1
+				incf	bytecnt,F				; loendame baite
+;				call	dly						; 3,98 ms viidet
+				LFSR	.1,Puhver				; hakkab saatma
+				bsf		Dir
+mk_2:			movf	POSTINC1,W
+				call	SendCHAR
+				decfsz	bytecnt
+				goto	mk_2
+				bcf		Dir
+; nüüd tuleb end bootloadimiseks valmis seada...
+
+				goto	reset_ser
+
+
+				
+mk_loendid:		movff	m_radrH,WREG
+				sublw	HIGH(.384)
+				btfss	ZERO
+				goto	valedata				; oli vale aadress
+				movff	m_radrL,WREG			; multi-kultit lubame nüüd ka loendite regitritele			
+				sublw	LOW(.384-.1)			; kas <384 ?
+				btfsc	CARRY
+				goto	valedata				; oli liiga madal aadress
+				movff	m_radrL,WREG				
+				sublw	LOW(.415)				; kas >415 ?
+				btfss	CARRY
 				goto	valedata				; oli liiga kõrge aadress
-				movff	m_radrL,serpartmp		; oli PWMi register
+				movff	m_radrL,serpartmp
+				movlw	0x80					; loendid
+				subwf	serpartmp,W
+				movff	WREG,m_radrL
+				movff	WREG,serpartmp
+				LFSR	.0,Loendi9				; kirjutame loenditesse
+				bcf		CARRY
+				rlcf	serpartmp,W				; liidame puhvri alguse (aadress *2)
+				addwf	FSR0L,F
+				btfsc	CARRY	
+				incf	FSR0H,F					; loetava registri aadress olemas !
+; kontrollime kirjutatava pikkust
+				movff	FSR0H,mb_temp1
+				movff	FSR0L,mb_temp2
+				movff	n_regH,WREG				; loetavate registrite arv (HIGH)
+				addlw	.0
+				btfss	ZERO
+				goto	valedata				; liiga pikk kirjutamise soov -> per...
+				movff	n_regL,WREG				; loetavate registrite arv (LOW)
+				bcf		CARRY
+				addwf	mb_temp2,F
+				btfsc	CARRY
+				incf	mb_temp1,F
+				movlw	HIGH(Dallas1)
+				cpfsgt	mb_temp1
+				goto	mkl1
+				goto	valedata
+mkl1:			cpfseq	mb_temp1
+				goto	mkl2					; on OK !
+				movlw	LOW(Dallas1)
+				cpfsgt	mb_temp2
+				goto	mkl2					; on OK !
+				goto	valedata
+mkl2:			movf	n_regH,W				; kirjutavate registrite arv (HIGH)
+				movwf	countH
+				movff	n_regL,countL
+				rlcf	countL,F				; kirjutavate registrite arv (LOW)
+				movf	countH,W				; kui kirjutatava pikkus =0, siis per...
+				addlw	.0
+				sublw	.0
+				btfss	ZERO
+				goto	mkl3
+				movf	countL,W				
+				addlw	.0
+				sublw	.0
+				btfsc	ZERO
+				goto	valedata
+mkl3a:			bsf		writedsID				; märgime, et dallase ID-d tuleb salvestada
+mkl3:			LFSR	.2,Puhver+.7			; daata tuleb siit (pos. 7 sest eeline on BAITIDE arv !
+mkloop:			movff	POSTINC2,POSTINC0
+				decfsz	countL
+				goto	mkloop
+				goto	modb_mk_end
+;**** pwmi kirjutamine ****
+mk_pwm:			movff	m_radrL,serpartmp		; oli PWMi register
 				movlw	.100
 				subwf	serpartmp,W
 				movff	WREG,serpartmp
@@ -2526,12 +2976,12 @@ multik2:		movf	n_regH,W				; kirjutavate registrite arv (HIGH)
 				sublw	.0
 				btfsc	ZERO
 				goto	valedata
-modb_mk:		LFSR	.2,Puhver+.7			; daata tuleb siit 
+modb_mk:		LFSR	.2,Puhver+.6			; daata tuleb siit 
 modb_mkloop:	movff	INDF2,POSTINC1
 				movff	POSTINC2,POSTINC0
 				decfsz	countL
 				goto	modb_mkloop
-				btfsc	broadcast				; broadcast'i puhul ei vasta !
+modb_mk_end:	btfsc	broadcast				; broadcast'i puhul ei vasta !
 				goto	reset_ser				
 ; Vastus: ADR, CMND, ST_REGH, ST_REGL, No_of_regH,No_of_reg_L, CRCH, CRCL
 				call	paketialgus				; kirjuta paketi algus (ADR, CMND) puhvrisse	
@@ -2597,10 +3047,12 @@ modb_conf:		bcf		reg0
 ;				movff	WREG,Register274+.1
 				movlw	0x00
 				movff	WREG,Register274
-				movf	INDF0,W					; IO suund
+				movf	INDF0,W					; AIO suund
 				movff	WREG,Register275+.1
-				movlw	0x00
-				movff	WREG,Register275
+; >>>CHG<<<
+;				movlw	0x00					; nüüd AIO ana/digi omadus, siin ei muuda !
+;				movff	WREG,Register275
+; >>>CHG<<<
 				btfsc	broadcast				; braodcast'i puhul ei vasta !
 				goto	reset_ser
 ; Vastus: ADR, CMD, ID1, ID2, ID1, ID2, CRCH,CRCL
@@ -2631,7 +3083,7 @@ paketilopp:		movf	_RS485chk,W				; ja summa
 				movf	_RS485chkH,W	
 				movwf	POSTINC1
 				incf	bytecnt,F				; loendame baite
-				call	dly						; 3,98 ms viidet
+;				call	dly						; 3,98 ms viidet
 				LFSR	.1,Puhver				; hakkab saatma
 				bsf		Dir
 send1:			movf	POSTINC1,W
@@ -2639,7 +3091,13 @@ send1:			movf	POSTINC1,W
 				decfsz	bytecnt
 				goto	send1
 				bcf		Dir
-				btfss	writeit					; oli konfidaata ja see tuleks EEPROMi kirjutada?
+				btfss	writedsID				; saadeti Dallase kivi ID ja see tuleb nüüd salvestada ?
+				goto	send1_1					; eip
+				bcf		INTCON,GIE
+				call	save_dallas_adr			; jepp!
+				bcf		writedsID
+				bsf		INTCON,GIE
+send1_1:		btfss	writeit					; oli konfidaata ja see tuleks EEPROMi kirjutada?
 				goto	reset_ser
 				bcf		INTCON,GIE
 				bcf		INTCON,PEIE
@@ -2655,6 +3113,10 @@ paketialgus:	LFSR	.1,Puhver				; formeerime vastuse saatepuhvrisse
 				movwf	_RS485chkH				; valmistume kontrollsumma arvutamiseks	
 				movwf	_RS485chk
 				clrf	bytecnt
+;--- CHG1 ---
+				movf	INDF1,W					; loe oma aadress saatest (sest see pidi ju selline olema !)
+				btfsc	broadcast				; broadcast'i puhul võtame oma aadressi EEPROMist
+;--- CHG1 ---
 				movff	Register274+.1,WREG		; oma aadress
 				movwf	POSTINC1
 				call	mb_crc16
@@ -2815,9 +3277,9 @@ validate5:		movff	m_radrH,XH				; adr >415 ?
 				call	compare16_16
 				btfss	CARRY			
 				goto	validate6
-				movlw	HIGH(.399)				; adr <400 ?
+				movlw	HIGH(.383)				; adr <384 ?
 				movwf	YH
-				movlw	LOW(.399)
+				movlw	LOW(.383)
 				movwf	YL
 				call	compare16_16
 				btfsc	CARRY
@@ -2890,7 +3352,26 @@ validate8:		movff	m_radrH,XH				; adr >685 ?
 				movlw	LOW(.687)
 				movwf	XL
 				goto	validate_end
-validate9:		movff	m_radrH,XH				; adr >735 ?
+validate9:		movff	m_radrH,XH				; adr >699 ?
+				movff	m_radrL,XL
+				movlw	HIGH(.699)
+				movwf	YH
+				movlw	LOW(.699)
+				movwf	YL
+				call	compare16_16
+				btfss	CARRY			
+				goto	validate9a				; jah
+				movff	m_radrH,WREG			; adr =699 ?
+				sublw	HIGH(.699)
+				btfss	ZERO
+				goto	validate_bad			; siis error !			
+				movff	m_radrL,WREG
+				sublw	LOW(.699)
+				btfss	ZERO
+				goto	validate_bad			; siis error !			
+				goto	validate_ok				; korras !
+
+validate9a:		movff	m_radrH,XH				; adr >735 ?
 				movff	m_radrL,XL
 				movlw	HIGH(.735)
 				movwf	YH
@@ -2974,9 +3455,12 @@ ch_algadr:		bcf		clrsticky				; oletame, et ei loetud reg.1-e.
 				bcf		sync
 				bcf		res_pwm
 				bcf		readonly
+				bcf		counters				; ei olnud loendid
+				bcf		special0
+				bcf		special1
 				movff	m_radrL,WREG
 				movff	WREG,Puhver+RSBufLen-.1
-				movff	m_radrH,WREG				; kas register 0 ?
+				movff	m_radrH,WREG			; kas register 0 ?
 				movff	WREG,Puhver+RSBufLen-.2
 				addlw	.0
 				btfss	ZERO
@@ -3025,7 +3509,7 @@ ch_alg0:		movff	m_radrL,WREG			; aadressi kontroll jätkub
 				goto	chk_alg11				; pwmi register oli
 
 chk_alg1:		bsf		readonly				; on vaid loetav register
-				movlw	.0
+chk_alg1a:		movlw	.0
 				movff	WREG,m_radrH
 				goto	chk_algok				; OK
 chk_alg3:		movff	m_radrH,WREG
@@ -3058,9 +3542,9 @@ chk_alg3e:		movff	m_radrH,serpartmp
 				subwf	serpartmp,W
 				btfss	CARRY
 				goto	chk_alg3b				; >100h , <200h
-				bsf		dallas					; ei ole dallase asi aga on loendi mis asub samuti taamal...
-				movff	m_radrL,WREG			; on loendid, algavad 0x190-st
-				sublw	0x90-.1						
+;				bsf		dallas					; ei ole dallase asi aga on loendi mis asub samuti taamal...
+				movff	m_radrL,WREG			; on loendid, algavad 0x180-st
+				sublw	0x80-.1						
 				btfss	CARRY
 				goto	chk_alg7;6				; Loendid on r/w registrid
 
@@ -3084,16 +3568,16 @@ chk_alg3d:		movff	m_radrL,WREG
 				sublw	0x02
 				btfss	ZERO
 				goto	chk_alg4
-				movlw	.21						; 258 -> 21, r-only, serial High
+				movlw	.21						; 258 -> 21, nyyd r/w, serial High
 				movff	WREG,m_radrL
-				goto	chk_alg1
+				goto	chk_alg1a
 chk_alg4:		movff	m_radrL,WREG				
 				sublw	0x03
 				btfss	ZERO
 				goto	chk_alg5
-				movlw	.22						; 259 -> 22, r-only, serial Low
+				movlw	.22						; 259 -> 22, nyyd r/w, serial Low
 				movff	WREG,m_radrL
-				goto	chk_alg1
+				goto	chk_alg1a
 chk_alg5:		movff	m_radrL,WREG			; adr 261...270 välja !
 				sublw	LOW(.270-.1)			; kas < 270 ?
 				btfsc	CARRY
@@ -3102,15 +3586,21 @@ chk_alg5:		movff	m_radrL,WREG			; adr 261...270 välja !
 				sublw	LOW(.280-.1)
 				btfss	CARRY
 				goto	chk_algbad				; siis per...
+;_____
+				movff	Puhver+.1,WREG			; kas oli lugemine ?
+				sublw	modbus_rd
+				btfsc	ZERO
+				goto	chk_alg5a				; käsk READ,ei tee mingit resetti ega ka käse EEPROMi kirjutada  !!!
+;_____
 				bsf		writeit					; oli konfidaata.kirjutada EEPROMi !
-; 
 				movff	m_radrL,WREG			; kas = 273 ?
 				sublw	LOW(.273)
 				btfss	ZERO
 				goto	chk_alg5a				; eip !
-				bsf		reset1ena				; jah, siis teeme kohe ka reset 1-e
-				movlw	.0
-				movwf	reset1dlytmr
+; 29.1.2014.: ei tee enam reset1-pulssi !
+;				bsf		reset1ena				; jah, siis teeme kohe ka reset 1-e
+;				movlw	.0
+;				movwf	reset1dlytmr
 ;
 chk_alg5a:		movff	m_radrL,WREG
 				addlw	.9;8
@@ -3133,11 +3623,13 @@ chk_alg2:;		movf	m_radrL,W				; tavaregistrid, kas adr <18 ?
 				bsf		reg10
 				goto	chk_alg1				; jah, need kõik read-only !
 chk_alg7:		movff	m_radrL,serpartmp
-				movlw	.112					; loendid
+				movlw	0x80;.144;112					; loendid
+;				addwf	serpartmp,W
 				subwf	serpartmp,W
 				movff	WREG,m_radrL
 				movlw	.0
 				movff	WREG,m_radrH
+				bsf		counters
 				goto	chk_alg6				; need on kõik r/w registrid
 
 chk_alg8:		movff	m_radrH,WREG			; teha reset (äksessiti reg. 999) ?
@@ -3152,20 +3644,70 @@ chk_alg8:		movff	m_radrH,WREG			; teha reset (äksessiti reg. 999) ?
 				movff	Puhver+.1,WREG
 				sublw	0x06
 				btfss	ZERO
-				goto	chk_algbad
+				goto	chk_alg8_1
 				movff	n_regH,WREG
 				sublw	0xDE
 				btfss	ZERO
-				goto	chk_algbad
+				goto	chk_alg8_1
 				movff	n_regL,WREG
 				sublw	0xAD
 				btfss	ZERO
-				goto	chk_algbad
+				goto	chk_alg8_1
 				bcf		INTCON,GIE
 				bcf		INTCON,PEIE			
 				reset							; jah, laseme reseti teha
+chk_alg8_1:		movff	Puhver+.1,WREG			; kui dc1a ja 699=0, tee discovery
+				sublw	0x06
+				btfss	ZERO
+				goto	chk_alg8_2
+				movff	n_regH,WREG
+				sublw	0xDC
+				btfss	ZERO
+				goto	chk_alg8_2
+				movff	n_regL,WREG
+				sublw	0x1A
+				btfss	ZERO
+				goto	chk_alg8_2
+				movff	Register699+.1,W		; käsk õige, kas 699=0 ?
+				addlw	.0
+				btfss	ZERO
+				goto	chk_algbad				; võlssivad raiped
+				bsf		special0				; märgime, et oli erikäsk 0
+				goto	chk_algok
+;2. kirjutades 999 sisse koodi feed võiks käivituda reset1 hoolimata 276 sisust ja kesta vastavalt 277 poolt määratule.
+chk_alg8_2:		movff	Puhver+.1,WREG			; kui feed, tee reset1
+				sublw	0x06
+				btfss	ZERO
+				goto	chk_alg8_3
+				movff	n_regH,WREG
+				sublw	0xFE
+				btfss	ZERO
+				goto	chk_alg8_3
+				movff	n_regL,WREG
+				sublw	0xED
+				btfss	ZERO
+				goto	chk_alg8_3
+				bsf		special1				; märgime, et oli erikäsk 1
+				goto	chk_algok
+chk_alg8_3:		goto	chk_algbad
 
-chk_alg8a:		movff	m_radrH,WREG			; > 700 ? Siis DS2438 kivi
+chk_alg8a:		movff	m_radrH,WREG			; = 699 ?
+				sublw	.2
+				btfss	ZERO
+				goto	chk_alg8aa
+				movff	m_radrL,WREG
+				sublw	0xBB	
+				btfss	ZERO
+				goto	chk_alg8aa				; eip !
+				LFSR	.0,Register699
+				bsf		pwm						; märgime, et FSR0 on juba laetud
+				bcf		loendi
+				bcf		dallas
+				bcf		readonly
+				bsf		writeit					; laseme kirjutada EEPROMi !
+				goto	chk_algok
+
+chk_alg8aa:		movff	m_radrH,WREG			; > 700 ? Siis DS2438 kivi
 				sublw	.3
 				btfsc	ZERO
 				goto	chk_alg13				; ja kindlasti
@@ -3198,7 +3740,8 @@ chk_alg9:		movff	m_radrL,serpartmp
 				movlw	.0
 				movff	WREG,m_radrH
 				bsf		dallas
-				goto	chk_alg1				; jah, need on r/0 registrid !
+;				goto	chk_alg1				; jah, need on r/0 registrid !
+				goto	chk_algok				; nüüd lubatud kirjutada !
 ; pwm-i registrid
 chk_alg11:		movff	m_radrL,serpartmp
 				movlw	.100
@@ -3287,7 +3830,8 @@ chk_alg14:		LFSR	.0,DS24381wa			; ID-de registrite baas
 				btfsc	CARRY	
 				incf	FSR0H,F					; loetava registri aadress olemas !
 				bsf		pwm
-				goto	chk_alg1				; read-only !
+;				goto	chk_alg1				; read-only !
+; nüüd on ka ID kirjutamine lubatud !
 chk_algok:		bcf		CARRY					; algusaadress oli lubatud piirides => Cy=0
 				return
 chk_algbad:		bsf		CARRY					; algusaadress oli üle piiri => Cy=1
@@ -3446,10 +3990,10 @@ T1int_1:		btfss	SerialTimerOn			; seriali taimer käib?
 				movf	serialtimer,W
 				addlw	.0
 				btfss	ZERO
-				goto	T1int_2
-	call f
-;				call	reset_ser
+			goto	T1int_10; 2
+				call	reset_ser
 				bcf		PIR1,RC1IF				; katkestuse nõue maha
+			goto	T1int_10
 ; *** loendite sisendite debounce ***
 T1int_2:		btfss	sens1tmron				; loendi 1: debounceme ?
 				goto	T1int_3					; eip
@@ -3459,7 +4003,7 @@ T1int_2:		btfss	sens1tmron				; loendi 1: debounceme ?
 				movwf	Loendi1tmr
 				bcf		sens1tmron
 				LFSR	.0,Loendi1+.3
-				call	inc_count				; tixub 1 pulsi 
+;				call	inc_count				; tixub 1 pulsi 
 T1int_3:		btfss	sens2tmron				; loendi 2
 				goto	T1int_4					
 				decfsz	Loendi2tmr
@@ -3468,7 +4012,7 @@ T1int_3:		btfss	sens2tmron				; loendi 2
 				movwf	Loendi2tmr
 				bcf		sens2tmron
 				LFSR	.0,Loendi2+.3
-				call	inc_count			
+;				call	inc_count			
 T1int_4:		btfss	sens3tmron				; loendi 3
 				goto	T1int_5				
 				decfsz	Loendi3tmr
@@ -3477,7 +4021,7 @@ T1int_4:		btfss	sens3tmron				; loendi 3
 				movwf	Loendi3tmr
 				bcf		sens3tmron
 				LFSR	.0,Loendi3+.3
-				call	inc_count				
+;				call	inc_count				
 T1int_5:		btfss	sens4tmron				; loendi 4
 				goto	T1int_6				
 				decfsz	Loendi4tmr
@@ -3515,22 +4059,38 @@ T1int_8:		btfss	sens7tmron				; loendi 7
 				LFSR	.0,Loendi7+.3
 				call	inc_count				
 T1int_9:		btfss	sens8tmron				; loendi 8
-				goto	Din_0				
+				goto	T1int_10				
 				decfsz	Loendi8tmr
-				goto	Din_0
+				goto	T1int_10
 				movlw	senstime				
 				movwf	Loendi8tmr
 				bcf		sens8tmron
 				LFSR	.0,Loendi8+.3
 				call	inc_count				
+;
+T1int_10:
 ;**** sisendite debounce ***** - > sisend 0 (DIN plokist)
-Din_0:			btfss	in_sticky
+Din_0:			movf	DinPort,W				; loeme digi-pordi seisu
+				movwf	Registertemp5
+;				xorwf	lastinputs2,W			; mis muutus ?
+;				movwf	muutus
+;;;;>>>>>
+;				movf	Register271+.0,W		; lisa: XORime tulemuse sellega läbi
+			comf	Register271+.0,W		; lisa: XORime tulemuse sellega läbi
+				xorwf	Registertemp5,F
+;
+				movf	Registertemp5,W
+				xorwf	lastinputs2,W			; mis muutus ?
+				movwf	muutus1
+;
+				btfss	in_sticky
 				goto	Din_0a
 				btfsc	dinstuck0
 				goto	Din_1
 Din_0a:			btfsc	Din0					; sisend 0 madal ?
 				goto	Din0high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.0			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_0stk				; ei, arvestab kohe
 				btfss	d0timeron				; jah, kas juba teame ?
 				goto	Din0high1				; ei, käivita deb. timer kui vaja
@@ -3538,14 +4098,18 @@ Din_0a:			btfsc	Din0					; sisend 0 madal ?
 				goto	Din_1					; ei veel, võta järgmine sisend
 Din_0stk:		bsf		dinpress0				; jah, võtame arvesse
 				bsf		dinstuck0				; blokeerime biti igal juhul
-Din_0setlow:;	bsf		pank1
-				bsf		Register1,.0
-;				bcf		pank1
+		bcf		lastinputs2,.0			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.0				; oli front või selline seis jätkub ?
+			goto	Din_0setlow				; senine seis jätkub
+			LFSR	.0,Loendi1+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_0setlow:	bsf		Register1,.0
 Din0_lstckl:	bcf		d0timeron
 				goto	Din_1					; võta järgmine sisend
-Din0high:		btfss	dinpress0				; oli kõrge enne ?
+Din0high:bsf		lastinputs2,.0			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress0				; oli kõrge enne ?
 				goto	Din_1					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_0stkh				; ei, arvestab kohe
 				btfss	d0timeron				; lahti laskmise debounce käib?
 				goto	Din0strt				; ei, paneme käima
@@ -3568,7 +4132,8 @@ Din_1:			btfss	in_sticky
 				goto	Din_2
 Din_1a:			btfsc	Din1					; sisend 1 madal ?
 				goto	Din1high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.1			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_1stk				; ei, arvestab kohe
 				btfss	d1timeron				; jah, kas juba teame ?
 				goto	Din1high1				; ei, käivita deb. timer kui vaja
@@ -3576,12 +4141,18 @@ Din_1a:			btfsc	Din1					; sisend 1 madal ?
 				goto	Din_2					; ei veel, võta järgmine sisend
 Din_1stk:		bsf		dinpress1				; jah, võtame arvesse
 				bsf		dinstuck1				; blokeerime biti igal juhul
+		bcf		lastinputs2,.1			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.1				; oli front või selline seis jätkub ?
+			goto	Din_1setlow				; senine seis jätkub
+			LFSR	.0,Loendi2+.3
+			call	inc_count				; tixub 1 pulsi 
 Din_1setlow:	bsf		Register1,.1
 Din1_lstckl:	bcf		d1timeron
 				goto	Din_2					; võta järgmine sisend
-Din1high:		btfss	dinpress1				; oli kõrge enne ?
+Din1high:bsf		lastinputs2,.1			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress1				; oli kõrge enne ?
 				goto	Din_2					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_1stkh				; ei, arvestab kohe
 				btfss	d1timeron				; lahti laskmise debounce käib?
 				goto	Din1strt				; ei, paneme käima
@@ -3604,7 +4175,8 @@ Din_2:			btfss	in_sticky
 				goto	Din_3
 Din_2a:			btfsc	Din2					; sisend 2 madal ?
 				goto	Din2high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.2			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_2stk				; ei, arvestab kohe
 				btfss	d2timeron				; jah, kas juba teame ?
 				goto	Din2high1				; ei, käivita deb. timer kui vaja
@@ -3612,14 +4184,18 @@ Din_2a:			btfsc	Din2					; sisend 2 madal ?
 				goto	Din_3					; ei veel, võta järgmine sisend
 Din_2stk:		bsf		dinpress2				; jah, võtame arvesse
 				bsf		dinstuck2				; blokeerime biti igal juhul
-Din_2setlow:;	bsf		pank1
-				bsf		Register1,.2
-;				bcf		pank1
+		bcf		lastinputs2,.2			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.2				; oli front või selline seis jätkub ?
+			goto	Din_2setlow				; senine seis jätkub
+			LFSR	.0,Loendi3+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_2setlow:	bsf		Register1,.2
 Din2_lstckl:	bcf		d2timeron
 				goto	Din_3					; võta järgmine sisend
-Din2high:		btfss	dinpress2				; oli kõrge enne ?
+Din2high:bsf		lastinputs2,.2			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress2				; oli kõrge enne ?
 				goto	Din_3					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_2stkh				; ei, arvestab kohe
 				btfss	d2timeron				; lahti laskmise debounce käib?
 				goto	Din2strt				; ei, paneme käima
@@ -3627,9 +4203,7 @@ Din2high:		btfss	dinpress2				; oli kõrge enne ?
 				goto	Din_3					; võta järgmine sisend
 				bcf		dinpress2				; loeme lahti lastuks
 Din_2stkh:		bsf		dinstuck2				; blokeerime biti igal juhul
-Din_2sethi:;		bsf		pank1
-				bcf		Register1,.2
-;				bcf		pank1
+Din_2sethi:		bcf		Register1,.2
 Din2_lstckh:	bcf		d2timeron
 				goto	Din_3					; võta järgmine sisend
 Din2high1:		btfsc	dinpress2
@@ -3644,40 +4218,35 @@ Din_3:			btfss	in_sticky
 				goto	Din_4
 Din_3a:			btfsc	Din3					; sisend 3 madal ?
 				goto	Din3high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.3			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_3stk				; ei, arvestab kohe
 				btfss	d3timeron				; jah, kas juba teame ?
 				goto	Din3high1				; ei, käivita deb. timer kui vaja
 				decfsz	din3tmr					; debouncetud?
 				goto	Din_4					; ei veel, võta järgmine sisend
 Din_3stk:		bsf		dinpress3				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_3setlow				; eip
-;				btfsc	dinstuck3				; kas muutus veel teavitamata?
-;				goto	Din3_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		dinstuck3				; blokeerime biti igal juhul
-Din_3setlow:;	bsf		pank1
-				bsf		Register1,.3
-;				bcf		pank1
+		bcf		lastinputs2,.3			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.3				; oli front või selline seis jätkub ?
+			goto	Din_3setlow				; senine seis jätkub
+			LFSR	.0,Loendi4+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_3setlow:	bsf		Register1,.3
 Din3_lstckl:	bcf		d3timeron
 				goto	Din_4					; võta järgmine sisend
-Din3high:		btfss	dinpress3				; oli kõrge enne ?
+Din3high:bsf		lastinputs2,.3			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress3				; oli kõrge enne ?
 				goto	Din_4					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_3stkh				; ei, arvestab kohe
 				btfss	d3timeron				; lahti laskmise debounce käib?
 				goto	Din3strt				; ei, paneme käima
 				decfsz	din3tmr
 				goto	Din_4					; võta järgmine sisend
 				bcf		dinpress3				; loeme lahti lastuks
-Din_3stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_3sethi				; eip
-;				btfsc	dinstuck3				; kas muutus veel teavitamata?
-;				goto	Din3_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		dinstuck3				; blokeerime biti igal juhul
-Din_3sethi:;		bsf		pank1
-				bcf		Register1,.3
-;				bcf		pank1
+Din_3stkh:		bsf		dinstuck3				; blokeerime biti igal juhul
+Din_3sethi:		bcf		Register1,.3
 Din3_lstckh:	bcf		d3timeron
 				goto	Din_4					; võta järgmine sisend
 Din3high1:		btfsc	dinpress3
@@ -3693,40 +4262,35 @@ Din_4:			btfss	in_sticky
 				goto	Din_5
 Din_4a:			btfsc	Din4					; sisend 4 madal ?
 				goto	Din4high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.4			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_4stk				; ei, arvestab kohe
 				btfss	d4timeron				; jah, kas juba teame ?
 				goto	Din4high1				; ei, käivita deb. timer kui vaja
 				decfsz	din4tmr					; debouncetud?
 				goto	Din_5					; ei veel, võta järgmine sisend
 Din_4stk:		bsf		dinpress4				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_4setlow				; eip
-;				btfsc	dinstuck4				; kas muutus veel teavitamata?
-;				goto	Din4_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		dinstuck4				; blokeerime biti igal juhul
-Din_4setlow:;	bsf		pank1
-				bsf		Register1,.4
-;				bcf		pank1
+			bcf		lastinputs2,.4			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.4				; oli front või selline seis jätkub ?
+			goto	Din_4setlow				; senine seis jätkub
+			LFSR	.0,Loendi5+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_4setlow:	bsf		Register1,.4
 Din4_lstckl:	bcf		d4timeron
 				goto	Din_5					; võta järgmine sisend
-Din4high:		btfss	dinpress4				; oli kõrge enne ?
+Din4high:bsf		lastinputs2,.4			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress4				; oli kõrge enne ?
 				goto	Din_5					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_4stkh				; ei, arvestab kohe
 				btfss	d4timeron				; lahti laskmise debounce käib?
 				goto	Din4strt				; ei, paneme käima
 				decfsz	din4tmr
 				goto	Din_5					; võta järgmine sisend
 				bcf		dinpress4				; loeme lahti lastuks
-Din_4stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_4sethi				; eip
-;				btfsc	dinstuck4				; kas muutus veel teavitamata?
-;				goto	Din4_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		dinstuck4				; blokeerime biti igal juhul
-Din_4sethi:;		bsf		pank1
-				bcf		Register1,.4
-;				bcf		pank1
+Din_4stkh:		bsf		dinstuck4				; blokeerime biti igal juhul
+Din_4sethi:		bcf		Register1,.4
 Din4_lstckh:	bcf		d4timeron
 				goto	Din_5					; võta järgmine sisend
 Din4high1:		btfsc	dinpress4
@@ -3734,7 +4298,6 @@ Din4high1:		btfsc	dinpress4
 Din4strt:		movlw	debtime					; käivitame debounce taimeri
 				movwf	din4tmr
 				bsf		d4timeron
-;				goto	Din_5					; võta järgmine sisend
 ;**** sisendite debounce ***** - > sisend 5 (DIN plokist)
 Din_5:			btfss	in_sticky
 				goto	Din_5a
@@ -3742,40 +4305,35 @@ Din_5:			btfss	in_sticky
 				goto	Din_6
 Din_5a:			btfsc	Din5					; sisend 5 madal ?
 				goto	Din5high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;				bcf		lastinputs2,.5			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_5stk				; ei, arvestab kohe
 				btfss	d5timeron				; jah, kas juba teame ?
 				goto	Din5high1				; ei, käivita deb. timer kui vaja
 				decfsz	din5tmr					; debouncetud?
 				goto	Din_6					; ei veel, võta järgmine sisend
 Din_5stk:		bsf		dinpress5				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_5setlow				; eip
-;				btfsc	dinstuck5				; kas muutus veel teavitamata?
-;				goto	Din5_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		dinstuck5				; blokeerime biti igal juhul
-Din_5setlow:;	bsf		pank1
-				bsf		Register1,.5
-;				bcf		pank1
+				bcf		lastinputs2,.5			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.5				; oli front või selline seis jätkub ?
+			goto	Din_5setlow				; senine seis jätkub
+			LFSR	.0,Loendi6+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_5setlow:	bsf		Register1,.5
 Din5_lstckl:	bcf		d5timeron
 				goto	Din_6					; võta järgmine sisend
-Din5high:		btfss	dinpress5				; oli kõrge enne ?
+Din5high:		bsf		lastinputs2,.5			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress5				; oli kõrge enne ?
 				goto	Din_6					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_5stkh				; ei, arvestab kohe
 				btfss	d5timeron				; lahti laskmise debounce käib?
 				goto	Din5strt				; ei, paneme käima
 				decfsz	din5tmr
 				goto	Din_6					; võta järgmine sisend
 				bcf		dinpress5				; loeme lahti lastuks
-Din_5stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_5sethi				; eip
-;				btfsc	dinstuck5				; kas muutus veel teavitamata?
-;				goto	Din5_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		dinstuck5				; blokeerime biti igal juhul
-Din_5sethi:;		bsf		pank1
-				bcf		Register1,.5
-;				bcf		pank1
+Din_5stkh:		bsf		dinstuck5				; blokeerime biti igal juhul
+Din_5sethi:		bcf		Register1,.5
 Din5_lstckh:	bcf		d5timeron
 				goto	Din_6					; võta järgmine sisend
 Din5high1:		btfsc	dinpress5
@@ -3791,40 +4349,35 @@ Din_6:			btfss	in_sticky
 				goto	Din_7
 Din_6a:			btfsc	Din6					; sisend 6 madal ?
 				goto	Din6high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.6			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_6stk				; ei, arvestab kohe
 				btfss	d6timeron				; jah, kas juba teame ?
 				goto	Din6high1				; ei, käivita deb. timer kui vaja
 				decfsz	din6tmr					; debouncetud?
 				goto	Din_7					; ei veel, võta järgmine sisend
 Din_6stk:		bsf		dinpress6				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_6setlow				; eip
-;				btfsc	dinstuck6				; kas muutus veel teavitamata?
-;				goto	Din6_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		dinstuck6				; blokeerime biti igal juhul
-Din_6setlow:;	bsf		pank1
-				bsf		Register1,.6
-;				bcf		pank1
+			bcf		lastinputs2,.6			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.6				; oli front või selline seis jätkub ?
+			goto	Din_6setlow				; senine seis jätkub
+			LFSR	.0,Loendi7+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_6setlow:	bsf		Register1,.6
 Din6_lstckl:	bcf		d6timeron
 				goto	Din_7					; võta järgmine sisend
-Din6high:		btfss	dinpress6				; oli kõrge enne ?
+Din6high:		bsf		lastinputs2,.6			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress6				; oli kõrge enne ?
 				goto	Din_7					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_6stkh				; ei, arvestab kohe
 				btfss	d6timeron				; lahti laskmise debounce käib?
 				goto	Din6strt				; ei, paneme käima
 				decfsz	din6tmr
 				goto	Din_7					; võta järgmine sisend
 				bcf		dinpress6				; loeme lahti lastuks
-Din_6stkh:	;	btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_6sethi				; eip
-;				btfsc	dinstuck6				; kas muutus veel teavitamata?
-;				goto	Din6_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		dinstuck6				; blokeerime biti igal juhul
-Din_6sethi:;		bsf		pank1
-				bcf		Register1,.6
-;				bcf		pank1
+Din_6stkh:		bsf		dinstuck6				; blokeerime biti igal juhul
+Din_6sethi:		bcf		Register1,.6
 Din6_lstckh:	bcf		d6timeron
 				goto	Din_7					; võta järgmine sisend
 Din6high1:		btfsc	dinpress6
@@ -3832,7 +4385,6 @@ Din6high1:		btfsc	dinpress6
 Din6strt:		movlw	debtime					; käivitame debounce taimeri
 				movwf	din6tmr
 				bsf		d6timeron
-;				goto	Din_7					; võta järgmine sisend
 ;**** sisendite debounce ***** - > sisend 7 (DIN plokist)
 Din_7:			btfss	in_sticky
 				goto	Din_7a
@@ -3840,40 +4392,35 @@ Din_7:			btfss	in_sticky
 				goto	Din_8
 Din_7a:			btfsc	Din7					; sisend 7 madal ?
 				goto	Din7high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs2,.7			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_7stk				; ei, arvestab kohe
 				btfss	d7timeron				; jah, kas juba teame ?
 				goto	Din7high1				; ei, käivita deb. timer kui vaja
 				decfsz	din7tmr					; debouncetud?
 				goto	Din_8					; ei veel, võta järgmine sisend
 Din_7stk:		bsf		dinpress7				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_7setlow				; eip
-;				btfsc	dinstuck7				; kas muutus veel teavitamata?
-;				goto	Din7_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		dinstuck7				; blokeerime biti igal juhul
-Din_7setlow:;	bsf		pank1
-				bsf		Register1,.7
-;				bcf		pank1
+			bcf		lastinputs2,.7			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.7				; oli front või selline seis jätkub ?
+			goto	Din_7setlow				; senine seis jätkub
+			LFSR	.0,Loendi8+.3
+			call	inc_count				; tixub 1 pulsi 
+Din_7setlow:	bsf		Register1,.7
 Din7_lstckl:	bcf		d7timeron
 				goto	Din_8					; võta järgmine sisend
-Din7high:		btfss	dinpress7				; oli kõrge enne ?
+Din7high:		bsf		lastinputs2,.7			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	dinpress7				; oli kõrge enne ?
 				goto	Din_8					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Din_7stkh				; ei, arvestab kohe
 				btfss	d7timeron				; lahti laskmise debounce käib?
 				goto	Din7strt				; ei, paneme käima
 				decfsz	din7tmr
 				goto	Din_8					; võta järgmine sisend
 				bcf		dinpress7				; loeme lahti lastuks
-Din_7stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Din_7sethi				; eip
-;				btfsc	dinstuck7				; kas muutus veel teavitamata?
-;				goto	Din7_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		dinstuck7				; blokeerime biti igal juhul
-Din_7sethi:	;	bsf		pank1
-				bcf		Register1,.7
-;				bcf		pank1
+Din_7stkh:		bsf		dinstuck7				; blokeerime biti igal juhul
+Din_7sethi:		bcf		Register1,.7
 Din7_lstckh:	bcf		d7timeron
 				goto	Din_8					; võta järgmine sisend
 Din7high1:		btfsc	dinpress7
@@ -3881,7 +4428,6 @@ Din7high1:		btfsc	dinpress7
 Din7strt:		movlw	debtime					; käivitame debounce taimeri
 				movwf	din7tmr
 				bsf		d7timeron
-;				goto	Din_8					; võta järgmine sisend
 Din_8:
 ;___________________________
 ;**** sisendite debounce ***** - > sisend 0 (AIN plokist)
@@ -3896,12 +4442,16 @@ Ain_0:			movf	PORTA,W					; loeme ANA-pordi seisu
 				bsf		Registertemp5,.6
 				btfsc	PORTE,.2
 				bsf		Registertemp5,.7
-				movf	Register271+.0,W		; lisa: XORime tulemuse sellega läbi
-				xorwf	Registertemp5,F;W
-
+				comf	Register271+.1,W		; lisa: XORime tulemuse sellega läbi
+				xorwf	Registertemp5,F
+;
+				movf	Registertemp5,W
+				xorwf	lastinputs1,W			; kas oli muutusi ?
+				movwf	muutus1
+;
 				btfsc	Register275+.1,.0		; kas on sisend ?
 				goto	Ain_0sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.0		; kas on digisisend ?
+				btfss	Register275+.0,.0		; kas on digisisend ?
 				goto	Ain_0sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_0a
@@ -3909,40 +4459,37 @@ Ain_0:			movf	PORTA,W					; loeme ANA-pordi seisu
 				goto	Ain_1
 Ain_0a:			btfsc	Ana0					; sisend 0 madal ?
 				goto	Ain0high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.0			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_0stk				; ei, arvestab kohe
 				btfss	a0timeron				; jah, kas juba teame ?
 				goto	Ain0high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain0tmr					; debouncetud?
 				goto	Ain_1					; ei veel, võta järgmine sisend
 Ain_0stk:		bsf		ainpress0				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_0setlow				; eip
-;				btfsc	ainstuck0				; kas muutus veel teavitamata?
-;				goto	Ain0_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck0				; blokeerime biti igal juhul
-Ain_0setlow:;	bsf		pank1
-				bsf		Register1+.1,.0
-;				bcf		pank1
+			bcf		lastinputs1,.0			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.0				; oli front või selline seis jätkub ?
+			goto	Ain_0setlow				; senine seis jätkub
+				LFSR	.0,Loendi9+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens9tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens9tmron 				; ei veel, siis taimer käima
+Ain_0setlow:	bsf		Register1+.1,.0
 Ain0_lstckl:	bcf		a0timeron
 				goto	Ain_1					; võta järgmine sisend
-Ain0high:		btfss	ainpress0				; oli kõrge enne ?
+Ain0high:	bsf		lastinputs1,.0			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress0				; oli kõrge enne ?
 				goto	Ain_1					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_0stkh				; ei, arvestab kohe
 				btfss	a0timeron				; lahti laskmise debounce käib?
 				goto	Ain0strt				; ei, paneme käima
 				decfsz	ain0tmr
 				goto	Ain_1					; võta järgmine sisend
 				bcf		ainpress0				; loeme lahti lastuks
-Ain_0stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_0sethi				; eip
-;				btfsc	ainstuck0				; kas muutus veel teavitamata?
-;				goto	Ain0_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck0				; blokeerime biti igal juhul
-Ain_0sethi:;		bsf		pank1
-				bcf		Register1+.1,.0
-;				bcf		pank1
+Ain_0stkh:		bsf		ainstuck0				; blokeerime biti igal juhul
+Ain_0sethi:		bcf		Register1+.1,.0
 Ain0_lstckh:	bcf		a0timeron
 				goto	Ain_1					; võta järgmine sisend
 Ain0high1:		btfsc	ainpress0
@@ -3954,7 +4501,7 @@ Ain0strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 1 (AIN plokist)
 Ain_1:			btfsc	Register275+.1,.1		; kas on sisend ?
 				goto	Ain_1sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.1		; kas on digisisend ?
+				btfss	Register275+.0,.1		; kas on digisisend ?
 				goto	Ain_1sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_1a
@@ -3962,40 +4509,37 @@ Ain_1:			btfsc	Register275+.1,.1		; kas on sisend ?
 				goto	Ain_2
 Ain_1a:			btfsc	Ana1					; sisend 1 madal ?
 				goto	Ain1high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.1			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_1stk				; ei, arvestab kohe
 				btfss	a1timeron				; jah, kas juba teame ?
 				goto	Ain1high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain1tmr					; debouncetud?
 				goto	Ain_2					; ei veel, võta järgmine sisend
 Ain_1stk:		bsf		ainpress1				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_1setlow				; eip
-;				btfsc	ainstuck1				; kas muutus veel teavitamata?
-;				goto	Ain1_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck1				; blokeerime biti igal juhul
-Ain_1setlow:;	bsf		pank1
-				bsf		Register1+.1,.1
-;				bcf		pank1
+			bcf		lastinputs1,.1			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.1				; oli front või selline seis jätkub ?
+			goto	Ain_1setlow				; senine seis jätkub
+				LFSR	.0,Loendi10+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens10tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens10tmron				; ei veel, siis taimer käima
+Ain_1setlow:	bsf		Register1+.1,.1
 Ain1_lstckl:	bcf		a1timeron
 				goto	Ain_2					; võta järgmine sisend
-Ain1high:		btfss	ainpress1				; oli kõrge enne ?
+Ain1high:	bsf		lastinputs1,.1			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress1				; oli kõrge enne ?
 				goto	Ain_2					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_1stkh				; ei, arvestab kohe
 				btfss	a1timeron				; lahti laskmise debounce käib?
 				goto	Ain1strt				; ei, paneme käima
 				decfsz	ain1tmr
 				goto	Ain_2					; võta järgmine sisend
 				bcf		ainpress1				; loeme lahti lastuks
-Ain_1stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_1sethi				; eip
-;				btfsc	ainstuck1				; kas muutus veel teavitamata?
-;				goto	Ain1_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck1				; blokeerime biti igal juhul
-Ain_1sethi:;		bsf		pank1
-				bcf		Register1+.1,.1
-;				bcf		pank1
+Ain_1stkh:		bsf		ainstuck1				; blokeerime biti igal juhul
+Ain_1sethi:		bcf		Register1+.1,.1
 Ain1_lstckh:	bcf		a1timeron
 				goto	Ain_2					; võta järgmine sisend
 Ain1high1:		btfsc	ainpress1
@@ -4007,7 +4551,7 @@ Ain1strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 2 (AIN plokist)
 Ain_2:			btfsc	Register275+.1,.2		; kas on sisend ?
 				goto	Ain_2sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.2		; kas on digisisend ?
+				btfss	Register275+.0,.2		; kas on digisisend ?
 				goto	Ain_2sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_2a
@@ -4015,40 +4559,37 @@ Ain_2:			btfsc	Register275+.1,.2		; kas on sisend ?
 				goto	Ain_3
 Ain_2a:			btfsc	Ana2					; sisend 2 madal ?
 				goto	Ain2high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.2			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_2stk				; ei, arvestab kohe
 				btfss	a2timeron				; jah, kas juba teame ?
 				goto	Ain2high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain2tmr					; debouncetud?
 				goto	Ain_3					; ei veel, võta järgmine sisend
 Ain_2stk:		bsf		ainpress2				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_2setlow				; eip
-;				btfsc	ainstuck2				; kas muutus veel teavitamata?
-;				goto	Ain2_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck2				; blokeerime biti igal juhul
-Ain_2setlow:;	bsf		pank1
-				bsf		Register1+.1,.2
-;				bcf		pank1
+			bcf		lastinputs1,.2			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.2				; oli front või selline seis jätkub ?
+			goto	Ain_2setlow				; senine seis jätkub
+				LFSR	.0,Loendi11+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens11tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens11tmron				; ei veel, siis taimer käima
+Ain_2setlow:	bsf		Register1+.1,.2
 Ain2_lstckl:	bcf		a2timeron
 				goto	Ain_3					; võta järgmine sisend
-Ain2high:		btfss	ainpress2				; oli kõrge enne ?
+Ain2high:	bsf		lastinputs1,.2			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress2				; oli kõrge enne ?
 				goto	Ain_3					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_2stkh				; ei, arvestab kohe
 				btfss	a2timeron				; lahti laskmise debounce käib?
 				goto	Ain2strt				; ei, paneme käima
 				decfsz	ain2tmr
 				goto	Ain_3					; võta järgmine sisend
 				bcf		ainpress2				; loeme lahti lastuks
-Ain_2stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_2sethi				; eip
-;				btfsc	ainstuck2				; kas muutus veel teavitamata?
-;				goto	Ain2_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck2				; blokeerime biti igal juhul
-Ain_2sethi:;		bsf		pank1
-				bcf		Register1+.1,.2
-;				bcf		pank1
+Ain_2stkh:		bsf		ainstuck2				; blokeerime biti igal juhul
+Ain_2sethi:		bcf		Register1+.1,.2
 Ain2_lstckh:	bcf		a2timeron
 				goto	Ain_3					; võta järgmine sisend
 Ain2high1:		btfsc	ainpress2
@@ -4060,7 +4601,7 @@ Ain2strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 3 (AIN plokist)
 Ain_3:			btfsc	Register275+.1,.3		; kas on sisend ?
 				goto	Ain_3sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.3		; kas on digisisend ?
+				btfss	Register275+.0,.3		; kas on digisisend ?
 				goto	Ain_3sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_3a
@@ -4068,40 +4609,37 @@ Ain_3:			btfsc	Register275+.1,.3		; kas on sisend ?
 				goto	Ain_4
 Ain_3a:			btfsc	Ana3					; sisend 3 madal ?
 				goto	Ain3high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.3			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_3stk				; ei, arvestab kohe
 				btfss	a3timeron				; jah, kas juba teame ?
 				goto	Ain3high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain3tmr					; debouncetud?
 				goto	Ain_4					; ei veel, võta järgmine sisend
 Ain_3stk:		bsf		ainpress3				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_3setlow				; eip
-;				btfsc	ainstuck3				; kas muutus veel teavitamata?
-;				goto	Ain3_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck3				; blokeerime biti igal juhul
-Ain_3setlow:;	bsf		pank1
-				bsf		Register1+.1,.3
-;				bcf		pank1
+			bcf		lastinputs1,.3			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.3				; oli front või selline seis jätkub ?
+			goto	Ain_3setlow				; senine seis jätkub
+				LFSR	.0,Loendi12+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens12tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens12tmron				; ei veel, siis taimer käima
+Ain_3setlow:	bsf		Register1+.1,.3
 Ain3_lstckl:	bcf		a3timeron
 				goto	Ain_4					; võta järgmine sisend
-Ain3high:		btfss	ainpress3				; oli kõrge enne ?
+Ain3high:	bsf		lastinputs1,.3			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress3				; oli kõrge enne ?
 				goto	Ain_4					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_3stkh				; ei, arvestab kohe
 				btfss	a3timeron				; lahti laskmise debounce käib?
 				goto	Ain3strt				; ei, paneme käima
 				decfsz	ain3tmr
 				goto	Ain_4					; võta järgmine sisend
 				bcf		ainpress3				; loeme lahti lastuks
-Ain_3stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_3sethi				; eip
-;				btfsc	ainstuck3				; kas muutus veel teavitamata?
-;				goto	Ain3_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck3				; blokeerime biti igal juhul
-Ain_3sethi:;		bsf		pank1
-				bcf		Register1+.1,.3
-;				bcf		pank1
+Ain_3stkh:		bsf		ainstuck3				; blokeerime biti igal juhul
+Ain_3sethi:		bcf		Register1+.1,.3
 Ain3_lstckh:	bcf		a3timeron
 				goto	Ain_4					; võta järgmine sisend
 Ain3high1:		btfsc	ainpress3
@@ -4113,7 +4651,7 @@ Ain3strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 4 (AIN plokist)
 Ain_4:			btfsc	Register275+.1,.4		; kas on sisend ?
 				goto	Ain_4sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.4		; kas on digisisend ?
+				btfss	Register275+.0,.4		; kas on digisisend ?
 				goto	Ain_4sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_4a
@@ -4121,40 +4659,37 @@ Ain_4:			btfsc	Register275+.1,.4		; kas on sisend ?
 				goto	Ain_5
 Ain_4a:			btfsc	Ana4					; sisend 4 madal ?
 				goto	Ain4high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.4			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_4stk				; ei, arvestab kohe
 				btfss	a4timeron				; jah, kas juba teame ?
 				goto	Ain4high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain4tmr					; debouncetud?
 				goto	Ain_5					; ei veel, võta järgmine sisend
 Ain_4stk:		bsf		ainpress4				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_4setlow				; eip
-;				btfsc	ainstuck4				; kas muutus veel teavitamata?
-;				goto	Ain4_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck4				; blokeerime biti igal juhul
-Ain_4setlow:;	bsf		pank1
-				bsf		Register1+.1,.4
-;				bcf		pank1
+			bcf		lastinputs1,.4			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.4				; oli front või selline seis jätkub ?
+			goto	Ain_4setlow				; senine seis jätkub
+				LFSR	.0,Loendi13+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens13tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens13tmron				; ei veel, siis taimer käima
+Ain_4setlow:	bsf		Register1+.1,.4
 Ain4_lstckl:	bcf		a4timeron
 				goto	Ain_5					; võta järgmine sisend
-Ain4high:		btfss	ainpress4				; oli kõrge enne ?
+Ain4high:	bsf		lastinputs1,.4			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress4				; oli kõrge enne ?
 				goto	Ain_5					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_4stkh				; ei, arvestab kohe
 				btfss	a4timeron				; lahti laskmise debounce käib?
 				goto	Ain4strt				; ei, paneme käima
 				decfsz	ain4tmr
 				goto	Ain_5					; võta järgmine sisend
 				bcf		ainpress4				; loeme lahti lastuks
-Ain_4stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_4sethi				; eip
-;				btfsc	ainstuck4				; kas muutus veel teavitamata?
-;				goto	Ain4_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck4				; blokeerime biti igal juhul
-Ain_4sethi:;		bsf		pank1
-				bcf		Register1+.1,.4
-;				bcf		pank1
+Ain_4stkh:		bsf		ainstuck4				; blokeerime biti igal juhul
+Ain_4sethi:		bcf		Register1+.1,.4
 Ain4_lstckh:	bcf		a4timeron
 				goto	Ain_5					; võta järgmine sisend
 Ain4high1:		btfsc	ainpress4
@@ -4166,7 +4701,7 @@ Ain4strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 5 (AIN plokist)
 Ain_5:			btfsc	Register275+.1,.5		; kas on sisend ?
 				goto	Ain_5sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.5		; kas on digisisend ?
+				btfss	Register275+.0,.5		; kas on digisisend ?
 				goto	Ain_5sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_5a
@@ -4174,40 +4709,37 @@ Ain_5:			btfsc	Register275+.1,.5		; kas on sisend ?
 				goto	Ain_6
 Ain_5a:			btfsc	Ana5					; sisend 5 madal ?
 				goto	Ain5high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.5			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_5stk				; ei, arvestab kohe
 				btfss	a5timeron				; jah, kas juba teame ?
 				goto	Ain5high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain5tmr					; debouncetud?
 				goto	Ain_6					; ei veel, võta järgmine sisend
 Ain_5stk:		bsf		ainpress5				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_5setlow				; eip
-;				btfsc	ainstuck5				; kas muutus veel teavitamata?
-;				goto	Ain5_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck5				; blokeerime biti igal juhul
-Ain_5setlow:;	bsf		pank1
-				bsf		Register1+.1,.5
-;				bcf		pank1
+			bcf		lastinputs1,.5			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.5				; oli front või selline seis jätkub ?
+			goto	Ain_5setlow				; senine seis jätkub
+				LFSR	.0,Loendi14+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens14tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens14tmron				; ei veel, siis taimer käima
+Ain_5setlow:	bsf		Register1+.1,.5
 Ain5_lstckl:	bcf		a5timeron
 				goto	Ain_6					; võta järgmine sisend
-Ain5high:		btfss	ainpress5				; oli kõrge enne ?
+Ain5high:	bsf		lastinputs1,.5			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress5				; oli kõrge enne ?
 				goto	Ain_6					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_5stkh				; ei, arvestab kohe
 				btfss	a5timeron				; lahti laskmise debounce käib?
 				goto	Ain5strt				; ei, paneme käima
 				decfsz	ain5tmr
 				goto	Ain_6					; võta järgmine sisend
 				bcf		ainpress5				; loeme lahti lastuks
-Ain_5stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_5sethi				; eip
-;				btfsc	ainstuck5				; kas muutus veel teavitamata?
-;				goto	Ain5_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck5				; blokeerime biti igal juhul
-Ain_5sethi:	;	bsf		pank1
-				bcf		Register1+.1,.5
-;				bcf		pank1
+Ain_5stkh:		bsf		ainstuck5				; blokeerime biti igal juhul
+Ain_5sethi:		bcf		Register1+.1,.5
 Ain5_lstckh:	bcf		a5timeron
 				goto	Ain_6					; võta järgmine sisend
 Ain5high1:		btfsc	ainpress5
@@ -4219,7 +4751,7 @@ Ain5strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 6 (AIN plokist)
 Ain_6:			btfsc	Register275+.1,.6		; kas on sisend ?
 				goto	Ain_6sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.6		; kas on digisisend ?
+				btfss	Register275+.0,.6		; kas on digisisend ?
 				goto	Ain_6sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_6a
@@ -4227,40 +4759,37 @@ Ain_6:			btfsc	Register275+.1,.6		; kas on sisend ?
 				goto	Ain_7
 Ain_6a:			btfsc	Ana6					; sisend 6 madal ?
 				goto	Ain6high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.6			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_6stk				; ei, arvestab kohe
 				btfss	a6timeron				; jah, kas juba teame ?
 				goto	Ain6high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain6tmr					; debouncetud?
 				goto	Ain_7					; ei veel, võta järgmine sisend
 Ain_6stk:		bsf		ainpress6				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_6setlow				; eip
-;				btfsc	ainstuck6				; kas muutus veel teavitamata?
-;				goto	Ain6_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck6				; blokeerime biti igal juhul
-Ain_6setlow:;	bsf		pank1
-				bsf		Register1+.1,.6
-;				bcf		pank1
+			bcf		lastinputs1,.6			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.6				; oli front või selline seis jätkub ?
+			goto	Ain_6setlow				; senine seis jätkub
+				LFSR	.0,Loendi15+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens15tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens15tmron				; ei veel, siis taimer käima
+Ain_6setlow:	bsf		Register1+.1,.6
 Ain6_lstckl:	bcf		a6timeron
 				goto	Ain_7					; võta järgmine sisend
-Ain6high:		btfss	ainpress6				; oli kõrge enne ?
+Ain6high:	bsf		lastinputs1,.6			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress6				; oli kõrge enne ?
 				goto	Ain_7					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_6stkh				; ei, arvestab kohe
 				btfss	a6timeron				; lahti laskmise debounce käib?
 				goto	Ain6strt				; ei, paneme käima
 				decfsz	ain6tmr
 				goto	Ain_7					; võta järgmine sisend
 				bcf		ainpress6				; loeme lahti lastuks
-Ain_6stkh:	;	btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_6sethi				; eip
-;				btfsc	ainstuck6				; kas muutus veel teavitamata?
-;				goto	Ain6_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck6				; blokeerime biti igal juhul
-Ain_6sethi:	;	bsf		pank1
-				bcf		Register1+.1,.6
-;				bcf		pank1
+Ain_6stkh:		bsf		ainstuck6				; blokeerime biti igal juhul
+Ain_6sethi:		bcf		Register1+.1,.6
 Ain6_lstckh:	bcf		a6timeron
 				goto	Ain_7					; võta järgmine sisend
 Ain6high1:		btfsc	ainpress6
@@ -4272,7 +4801,7 @@ Ain6strt:		movlw	debtime					; käivitame debounce taimeri
 ;**** sisendite debounce ***** - > sisend 7 (AIN plokist)
 Ain_7:			btfsc	Register275+.1,.7		; kas on sisend ?
 				goto	Ain_7sethi				; eip, kirjutab nulli registrisse
-				btfss	Register271+.1,.7		; kas on digisisend ?
+				btfss	Register275+.0,.7		; kas on digisisend ?
 				goto	Ain_7sethi				; eip, kirjutab nulli registrisse
 				btfss	in_sticky
 				goto	Ain_7a
@@ -4280,40 +4809,37 @@ Ain_7:			btfsc	Register275+.1,.7		; kas on sisend ?
 				goto	Ain_8
 Ain_7a:			btfsc	Ana7					; sisend 7 madal ?
 				goto	Ain7high				; ei, kõrge, seedi seda
-				btfss	in_debounce				; kas debounce't teeb ?
+;			bcf		lastinputs1,.7			; oli vist langev front, updateerime sisendite eelmist seisu
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_7stk				; ei, arvestab kohe
 				btfss	a7timeron				; jah, kas juba teame ?
 				goto	Ain7high1				; ei, käivita deb. timer kui vaja
 				decfsz	ain7tmr					; debouncetud?
 				goto	Ain_8					; ei veel, võta järgmine sisend
 Ain_7stk:		bsf		ainpress7				; jah, võtame arvesse
-;				btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_7setlow				; eip
-;				btfsc	ainstuck7				; kas muutus veel teavitamata?
-;				goto	Ain7_lstckl				; teavitus saatmata, bitti ei muuda
 				bsf		ainstuck7				; blokeerime biti igal juhul
-Ain_7setlow:;	bsf		pank1
-				bsf		Register1+.1,.7
-;				bcf		pank1
+			bcf		lastinputs1,.7			; oli vist langev front, updateerime sisendite eelmist seisu
+			btfss	muutus1,.7				; oli front või selline seis jätkub ?
+			goto	Ain_7setlow				; senine seis jätkub
+				LFSR	.0,Loendi16+.3
+				call	inc_count				; tixub 1 pulsi 
+;				btfss	sens16tmron				; tegevus loendina: JUBA DEBOUNCEME ?
+;				bsf		sens16tmron				; ei veel, siis taimer käima
+Ain_7setlow:	bsf		Register1+.1,.7
 Ain7_lstckl:	bcf		a7timeron
 				goto	Ain_8					; võta järgmine sisend
-Ain7high:		btfss	ainpress7				; oli kõrge enne ?
+Ain7high:	bsf		lastinputs1,.7			; oli vist tõusev front, updateerime sisendite eelmist seisu
+				btfss	ainpress7				; oli kõrge enne ?
 				goto	Ain_8					; ei, võta järgmine sisend
-				btfss	in_debounce				; kas debounce't teeb ?
+				btfsc	in_debounce				; kas debounce't teeb ?
 				goto	Ain_7stkh				; ei, arvestab kohe
 				btfss	a7timeron				; lahti laskmise debounce käib?
 				goto	Ain7strt				; ei, paneme käima
 				decfsz	ain7tmr
 				goto	Ain_8					; võta järgmine sisend
 				bcf		ainpress7				; loeme lahti lastuks
-Ain_7stkh:;		btfss	in_sticky				; sticky bitti arvestame ?
-;				goto	Ain_7sethi				; eip
-;				btfsc	ainstuck7				; kas muutus veel teavitamata?
-;				goto	Ain7_lstckh				; teavitus saatmata, bitti ei muuda
-				bsf		ainstuck7				; blokeerime biti igal juhul
-Ain_7sethi:;		bsf		pank1
-				bcf		Register1+.1,.7
-;				bcf		pank1
+Ain_7stkh:		bsf		ainstuck7				; blokeerime biti igal juhul
+Ain_7sethi:		bcf		Register1+.1,.7
 Ain7_lstckh:	bcf		a7timeron
 				goto	Ain_8					; võta järgmine sisend
 Ain7high1:		btfsc	ainpress7
@@ -4321,7 +4847,7 @@ Ain7high1:		btfsc	ainpress7
 Ain7strt:		movlw	debtime					; käivitame debounce taimeri
 				movwf	ain7tmr
 				bsf		a7timeron
-Ain_8:	;		movf	Register271+.0,W		; lisa: XORime tulemuse sellega läbi
+Ain_8:
 T1int_end:
 				goto	Int_2
 ;===============================================================================
@@ -4338,8 +4864,8 @@ main:			call	init					; prose setup
 				movwf	PIE1
 				banksel	.0
 				movf	PORTB,W				
-				movlw	B'00101000'				; Perifeeria intsid lubada, samuti TMR0IE ja RBIE int
-				movwf	INTCON
+				bsf	INTCON,RBIE
+;	bsf	INTCON,T0IE
 				movlw	B'00010000'				; katskestusi ei ole esinenud, RS232 porti ei puudu: read-only
 				movwf	PIR1	
 				banksel	IOCB
@@ -4369,6 +4895,9 @@ main:			call	init					; prose setup
 				bcf		INTCON,TMR0IF			; debuggeri jaox ainult !
 				bsf		INTCON,PEIE			
 				bsf		INTCON,GIE				; lubame kindral-katckestused
+; jupitamise debug
+;				bcf		INTCON,TMR0IE			; see rsk solgibki saate ära (viide iga baidi järel)
+;
 tsykkel:		bcf		PIE1,ADIE
 				bcf		PIR1,TXIF				; katkestuse nõue maha
 				btfss	cmd_ok					; oli valiidne käsk ?
@@ -4380,17 +4909,67 @@ tsykkel:		bcf		PIE1,ADIE
 				bcf		temper					; mõõtmine tehtud
 				movlw	_10sekundiaeg
 				movwf	_10sekunditmr
-; bsf Dout6
-;	nop
-;	nop
-;	nop
-;	nop
-;---------
 aaa:			call	command					; jah - töötle ja täida 
-;	bcf	Dout6
 				call	reset_ser				; tehtud !
 				bcf		cmd_ok					; tehtud !
-				bcf		PIR1,RC1IF
+
+				btfsc	special0				; olid erikäsud ?
+				goto	special_cmd0			; 
+				btfsc	special1
+				goto	special_cmd1	
+				goto	aab
+special_cmd0:	bcf		INTCON,GIE
+				bcf		INTCON,PEIE			
+				bcf		RCON,IPEN
+		bcf		special0			
+				LFSR	.1,Dallas1				; hakkame andureid detectima: DS1820 kontrollbaidid näidaku et andurid puuduvad (0x1000)
+				movlw	.9
+				movwf	DS1820found
+ds1820luup:		movlw	0x10
+				movwf	POSTINC1
+				movlw	0x00
+				movwf	POSTINC1
+				decfsz	DS1820found
+				goto	ds1820luup
+				LFSR	.1,Dallas1wa
+				movlw	.72
+				movwf	DS1820found
+ds1820luup1:	movlw	0x00
+				movwf	POSTINC1
+				decfsz	DS1820found
+				goto	ds1820luup1
+
+				LFSR	.1,DS2438_1				; DS2438 kontrollbaidid näidaku samuti et andurid puuduvad (0x1000)
+				movlw	.9*.4
+				movwf	DS1820found
+ds2438luup:		movlw	0x10
+				movwf	POSTINC1
+				movlw	0x00
+				movwf	POSTINC1
+				decfsz	DS1820found
+				goto	ds2438luup
+				LFSR	.1,DS24381wa
+				movlw	.72
+				movwf	DS1820found
+ds1820luup2:	movlw	0x00
+				movwf	POSTINC1
+				decfsz	DS1820found
+				goto	ds1820luup2
+
+				call	discovery
+				clrwdt                    		; WDT nullida 
+				bsf		RCON,IPEN				; lubame katkestuste prioriteedid
+				bsf		INTCON,PEIE			
+				bsf		INTCON,GIE
+				goto	aab
+special_cmd1:	bsf		reset1pulseon			; märgime ära
+				bcf		n_reset1				; ja nüüd annab saapaga ... ! -> inversioonis
+				movff	Register276,WREG		; taasta side kadumise viiteaeg
+				movwf	reset1dlytmrH
+				movff	Register276+.1,WREG
+				movwf	reset1dlytmrL
+	
+aab:			bcf		PIR1,RC1IF
 				banksel	PIE1
 				bsf		PIE1,RC1IE				; lubame uue käsu vastuvõttu
 				banksel	.0
@@ -4403,7 +4982,7 @@ adc000:
 				clrf	meascount
 adcchan0:		btfsc	Register275+.1,.0		; kui see bitt on väljund, kirjutame tulemuseks 0
 				goto	adc0					; ongi
-				btfss	Register271+.1,.0		; kui see bitt on digisisend, kirjutame tulemuseks 0
+				btfss	Register275+.0,.0		; kui see bitt on digisisend, kirjutame tulemuseks 0
 				goto	adc00					; sobib, muundame
 adc0:			movlw	0x00
 				movff	WREG,Register2
@@ -4419,7 +4998,7 @@ adcchan1:		incf	meascount,F				; register 3
 				LFSR	.0,Register3
 				btfsc	Register275+.1,.1		
 				goto	adc1					
-				btfss	Register271+.1,.1		
+				btfss	Register275+.0,.1		
 				goto	adc11
 adc1:			movlw	0x00
 				movff	WREG,Register3
@@ -4435,7 +5014,7 @@ adcchan2:		incf	meascount,F
 				LFSR	.0,Register4			; register 4
 				btfsc	Register275+.1,.2		
 				goto	adc2					
-				btfss	Register271+.1,.2		
+				btfss	Register275+.0,.2		
 				goto	adc22
 adc2:			movlw	0x00
 				movff	WREG,Register4
@@ -4451,7 +5030,7 @@ adcchan3:		incf	meascount,F
 				LFSR	.0,Register5			; register 5
 				btfsc	Register275+.1,.3		
 				goto	adc3					
-				btfss	Register271+.1,.3		
+				btfss	Register275+.0,.3		
 				goto	adc33
 adc3:			movlw	0x00
 				movff	WREG,Register5
@@ -4467,7 +5046,7 @@ adcchan4:		incf	meascount,F
 				LFSR	.0,Register6			; register 6
 				btfsc	Register275+.1,.4		
 				goto	adc4					
-				btfss	Register271+.1,.4		
+				btfss	Register275+.0,.4		
 				goto	adc44
 adc4:			movlw	0x00
 				movff	WREG,Register6
@@ -4483,7 +5062,7 @@ adcchan5:		incf	meascount,F
 				LFSR	.0,Register7			; register 7
 				btfsc	Register275+.1,.5		
 				goto	adc5					
-				btfss	Register271+.1,.5		
+				btfss	Register275+.0,.5		
 				goto	adc55
 adc5:			movlw	0x00
 				movff	WREG,Register7
@@ -4499,7 +5078,7 @@ adcchan6:		incf	meascount,F
 				LFSR	.0,Register8			; REGISTER 8
 				btfsc	Register275+.1,.6		
 				goto	adc6					
-				btfss	Register271+.1,.6		
+				btfss	Register275+.0,.6		
 				goto	adc66
 adc6:			movlw	0x00
 				movff	WREG,Register8
@@ -4515,7 +5094,7 @@ adcchan7:		incf	meascount,F
 				LFSR	.0,Register9			; register 9
 				btfsc	Register275+.1,.7		
 				goto	adc7					
-				btfss	Register271+.1,.7		
+				btfss	Register275+.0,.7		
 				goto	adc77
 adc7:			movlw	0x00
 				movff	WREG,Register9
@@ -4551,10 +5130,22 @@ measure:
 				addlw	.0
 				btfsc	ZERO
 				goto	keskmista				; jah, arvuta tulemus
-sdly0:			movlw	sampletime				; 277us
+				movlw	sampletime				; 4* 69,625us=278,5us
 				movwf	sampledly
 sdly:			decfsz	sampledly
 				goto	sdly
+				movlw	sampletime				
+				movwf	sampledly
+sdly1:			decfsz	sampledly
+				goto	sdly
+				movlw	sampletime				
+				movwf	sampledly
+sdly2:			decfsz	sampledly
+				goto	sdly2
+				movlw	sampletime				
+				movwf	sampledly
+sdly3:			decfsz	sampledly
+				goto	sdly3
 				banksel	ADCON0
 				bsf		ADCON0,GO
 meas1:			BTFSC 	ADCON0,GO 
@@ -4853,9 +5444,11 @@ setup_serial0:
 				movff	WREG,Register273+.1			
 initser_par:	movlw	0x00
 				movff	WREG,Register273		; selle solkisime ää, nüüd nulli
-				movlw	B'01100111'				; paarsuse kalkuleerimine - eeldame: 9 bitine saade
+;				movlw	B'01100111'				; paarsuse kalkuleerimine - eeldame: 9 bitine saade
+				movlw	B'01100011'				; paarsuse kalkuleerimine - eeldame: 9 bitine saade, SYNC=BRGH=BRG16=0
 				btfsc	Register273+.1,.7		; paarsus even (0) või puudub (1) ?
-				movlw	B'00100110'				; paarsus puudub: 8 bitine saade
+;				movlw	B'00100110'				; paarsus puudub: 8 bitine saade
+				movlw	B'00100010'				; paarsus puudub: 8 bitine saade, SYNC=BRGH=BRG16=0
 				banksel	TXSTA1
 				movwf	TXSTA1
 				banksel	.0
@@ -4901,9 +5494,7 @@ Read_Setup:		movlw	LOW(e_ADR)				; loe oma modbussi aadress
 				call	Read_EEPROM				; ANA-pordi (UIO) suund, 1= väljund, bitthaaval)	
 				movff	WREG,Register275+.1		
 				call	Read_EEPROM				; analoogpordi seisund stardil - analoog või digi. 1= digi
-				movff	WREG,Register271+.1
-				movlw	0x00
-				movff	WREG,Register271
+				movff	WREG,Register275+.0
 				call	Read_EEPROM				; seadme tüüp	
 				movff	WREG,Register256+.1
 				movlw	0x00
@@ -4914,33 +5505,41 @@ Read_Setup:		movlw	LOW(e_ADR)				; loe oma modbussi aadress
 				movff	WREG,Register257+.1
 
 ; *** resetid ****
-				call	Read_EEPROM				; reset 1 ajad: viiteaeg peale pingestamist				
+
+; Muudatus:
+; 276 RW reset1 (USB), rakendumise aeg 16bit, sekundites
+; 277 RW reset1 (USB), pulsi kestus 16 bit, sekundites
+; 278 RW reset2 (Phone Power Button), rakendumise aeg 16bit, sekundites
+; 279 RW reset2 (Phone Power Button), pulsi kestus 16 bit, sekundites
+				call	Read_EEPROM				; reset 1 ajad: side kadumise viiteaeg
 				movff	WREG,Register276
-				movwf	reset1strttmrH
+				movwf	reset1dlytmrH
 				call	Read_EEPROM					
 				movff	WREG,Register276+.1
-				movwf	reset1strttmrL
-				call	Read_EEPROM				; reseti pulsi kestus				
+				movwf	reset1dlytmrL
+				call	Read_EEPROM				; reseti pulsi kestus							
 				movff	WREG,Register277
-				movwf	reset1pulsetmr
+				movwf	reset1pulsetmrH
 				call	Read_EEPROM					
-				movff	WREG,Register277+.1		; side kadumise viiteaeg
-				movwf	reset1dlytmr
-				call	Read_EEPROM				; reset 2 ajad: viiteaeg peale pingestamist				
+				movff	WREG,Register277+.1	
+				movwf	reset1pulsetmrL
+				call	Read_EEPROM				; reset 2 ajad: side kadumise viiteaeg
 				movff	WREG,Register278
-				movwf	reset2strttmrH
+				movwf	reset2dlytmrH
 				call	Read_EEPROM					
 				movff	WREG,Register278+.1
-				movwf	reset2strttmrL
-				call	Read_EEPROM				; reseti pulsi kestus				
+				movwf	reset2dlytmrL
+				call	Read_EEPROM				; reseti pulsi kestus							
 				movff	WREG,Register279
-				movwf	reset2pulsetmr
+				movwf	reset2pulsetmrH
 				call	Read_EEPROM					
-				movff	WREG,Register279+.1		; side kadumise viiteaeg
-				movwf	reset2dlytmr
+				movff	WREG,Register279+.1	
+				movwf	reset2pulsetmrL
 ; *** XORimine ****
-				call	Read_EEPROM				; juhitav aktiivne nivoo ANA-pordi sisendis
+				call	Read_EEPROM				; juhitav aktiivne nivoo DIGI-pordi sisendis
 				movff	WREG,Register271+.0
+				call	Read_EEPROM				; juhitav aktiivne nivoo ANA-pordi sisendis
+				movff	WREG,Register271+.1
 ; *** ADC ****
 				call	Read_EEPROM				; ADC registri ADCON1 bitid
 				andlw	0x30					; lubame vaid Vref-i puudutavaid bitte
@@ -4948,8 +5547,14 @@ Read_Setup:		movlw	LOW(e_ADR)				; loe oma modbussi aadress
 				BANKSEL ADCON1 
 				MOVWF 	ADCON1 					; konfime kohe ADC ka ära
 				banksel	.0
-				movlw	0x00
+				call	Read_EEPROM				; PWMi lubatuse bitid
 				movff	WREG,Register270
+;				bcf		pwmenabled
+;				btfsc	Register270,.0
+;				bsf		pwmenabled
+;				bcf		INTCON,TMR0IE
+;				btfsc	pwmenabled
+				bsf		INTCON,TMR0IE
 ; *** PWM ****
 				call	Read_EEPROM				; PWMi perioodi register
 				movff	WREG,Register150+.0
@@ -4959,6 +5564,16 @@ Read_Setup:		movlw	LOW(e_ADR)				; loe oma modbussi aadress
 				movff	WREG,Register151+.0
 				call	Read_EEPROM			
 				movff	WREG,Register151+.1
+; *** Dallase adr. lukustamine ***
+				movlw	LOW(e_reg699)			; loe reg. 699-st lukustamise luba või keeld
+				banksel	EEADR
+				movwf	EEADR
+				clrf	EEADRH
+				call	Read_EEPROM					
+				movff	WREG,Register699+.0
+				call	Read_EEPROM					
+				movff	WREG,Register699+.1
+; *** lõpetame .... 
 				call	reset_pwm				; initsialiseerime PWMi
 				goto	setup_port				; kombineeri DO ja UIO juhtimine ja vastavate registrite sisud
 				return
@@ -4985,19 +5600,6 @@ reset_pwm:		movff	Register150+.0,pwmtmp+.1; pertick'is on periood*4 sammu
 				btfss	ZERO
 				goto	reset_pwm1
 		bsf		T0CON,TMR0ON
-;>>>CHG<<<
-; siin tahetaxe et pulsside kestused ka nullitax. Teeme nii, kliendi püha soov...
-				LFSR	.0,pwm0set				; nulli pulsside kestused. Tööregistrid jäävad kunix pulsid lõpvad.
-;				LFSR	.1,pwm0work
-				movlw	.16	
-				movff	WREG,_1mscount			; ajutine loendi
-res_pulse:		clrf	POSTINC0
-;				clrf	POSTINC1
-				decfsz	_1mscount
-				goto	res_pulse
-				movlw	.4						; taasta 1ms loendi
-				movwf	_1mscount
-;>>>CHG<<<
 				goto	rp1
 reset_pwm1:		bsf		T0CON,TMR0ON			; PWMi taimer käima
 reset_pwm2:		movff	pwmtmp+.0,masterpertick+.0
@@ -5040,7 +5642,7 @@ reset_per:		movlw	0x00
 				movff	WREG,periodtick+.0		; nulli perioodi loendi et periood saax kohe alata
 				movff	WREG,periodtick+.1
 				movff	WREG,periodtick+.2
-				movlw	.0					
+				movlw	T0reso;.0				
 				movwf	TMR0L
 				LFSR	.0,Register151+.1
 				movlw	0x00
@@ -5069,43 +5671,45 @@ Save_Setup:		movlw	LOW(e_ADR)				; loe oma aadress
 				call	Wr_EEPROM				
 				movff	Register275+.1,WREG		; IOD ehk ANA-pordi suund
 				call	Wr_EEPROM				; kirjutame EEPROMi aga arvestame alles peale ANCONxi sättimist !
-				movff	Register271+.1,WREG		; pordi Ana/Digi omadused (1=digi)
+				movff	Register275+.0,WREG		; pordi Ana/Digi omadused (1=digi)
 				call	Wr_EEPROM				; seivib EEPROMi
 ; *** resetid ****
 				movlw	LOW(e_reset1)			; reset 1 ajad
 				banksel	EEADR
 				movwf	EEADR
 				clrf	EEADRH
-				movff	Register276,WREG		; viiteaeg peale pingestamist
-				movwf	reset1strttmrH
+				movff	Register276,WREG		; side kadumise viiteaeg
+				movwf	reset1dlytmrH
 				call	Wr_EEPROM
 				movff	Register276+.1,WREG		
-				movwf	reset1strttmrL
+				movwf	reset1dlytmrL
 				call	Wr_EEPROM
-				movff	Register277,WREG		; reseti pulsi kestus
-				movwf	reset1pulsetmr
+				movff	Register277,WREG	
+				movwf	reset1pulsetmrH			; reseti pulsi kestus
 				call	Wr_EEPROM
-				movff	Register277+.1,WREG		; side kadumise viiteaeg	
-				movwf	reset2dlytmr
+				movff	Register277+.1,WREG			
+				movwf	reset1pulsetmrL
 				call	Wr_EEPROM
 				movlw	LOW(e_reset2)			; reset 2 ajad
 				movwf	EEADR
 				clrf	EEADRH
-				movff	Register278,WREG		; viiteaeg peale pingestamist
-				movwf	reset2strttmrH
+				movff	Register278,WREG		; side kadumise viiteaeg
+				movwf	reset2dlytmrH
 				call	Wr_EEPROM
 				movff	Register278+.1,WREG		
-				movwf	reset2strttmrL
+				movwf	reset2dlytmrL
 				call	Wr_EEPROM
-				movff	Register279,WREG		; reseti pulsi kestus
-				movwf	reset2pulsetmr
+				movff	Register279,WREG	
+				movwf	reset2pulsetmrH			; reseti pulsi kestus
 				call	Wr_EEPROM
-				movff	Register279+.1,WREG		; side kadumise viiteaeg	
-				movwf	reset2dlytmr
+				movff	Register279+.1,WREG			
+				movwf	reset2pulsetmrL
 				call	Wr_EEPROM
 ; *** XORimine ****
-				movff	Register271+.0,WREG		; ANA-pordi väljundi aktiivse nivoo juhtimine
-				call	Wr_EEPROM			; see oli puudu !!!
+				movff	Register271+.0,WREG		; DIGI-pordi väljundi aktiivse nivoo juhtimine
+				call	Wr_EEPROM		
+				movff	Register271+.1,WREG		; ANA-pordi väljundi aktiivse nivoo juhtimine
+				call	Wr_EEPROM	
 ; *** ADC ****
 				movff	Register270+.1,WREG		; ADC konf
 				andlw	0x30	
@@ -5115,6 +5719,14 @@ Save_Setup:		movlw	LOW(e_ADR)				; loe oma aadress
 				BANKSEL ADCON1 
 				MOVWF 	ADCON1 					; konfime kohe ADC ka ära
 				banksel	.0
+				movff	Register270+.0,WREG		; PWMi konf
+				call	Wr_EEPROM
+;				bcf		pwmenabled
+;				btfsc	Register270,.0
+;				bsf		pwmenabled
+;				bcf		INTCON,TMR0IE
+;				btfsc	pwmenabled
+				bsf		INTCON,TMR0IE
 ; *** PWM ***
 				movff	Register150+.0,WREG		; PWMi perioodi register
 				call	Wr_EEPROM
@@ -5123,6 +5735,15 @@ Save_Setup:		movlw	LOW(e_ADR)				; loe oma aadress
 				movff	Register151+.0,WREG
 				call	Wr_EEPROM				; PWMi konfi register
 				movff	Register151+.1,WREG
+				call	Wr_EEPROM				
+; *** Dallase adr. lukustamine ***
+				movlw	LOW(e_reg699)			; loe reg. 699-st lukustamise luba või keeld
+				banksel	EEADR
+				movwf	EEADR
+				clrf	EEADRH
+				movff	Register699+.0,WREG
+				call	Wr_EEPROM				
+				movff	Register699+.1,WREG
 				call	Wr_EEPROM				
 ;===============================================================================
 ; kombineerib DO ja UIO juhtimise ja vastavate registrite sisud
@@ -5151,7 +5772,7 @@ setup_port:		movf	Register275+.1,W		; IOD ehk ANA-pordi suund. 1 = OUT
 				movwf	TRISE					; ja porti E
 				banksel	.0
 ; pordi Ana/Digi omadused. 1 = DIGI, 0 = ANA
-				comf	Register271+.1,W		; 1=ANA: väljund ei saa olla analoog !
+				comf	Register275+.0,W		; 1=ANA: väljund ei saa olla analoog !
 				movwf	Registertemp7
 				comf	Register275+.1,W		; 0 = OUT
 				andwf	Registertemp7,W
@@ -5160,13 +5781,13 @@ setup_port:		movf	Register275+.1,W		; IOD ehk ANA-pordi suund. 1 = OUT
 				clrf	ANCON1
 				banksel	.0
 
-				movf	Register271+.1,W		; analoogpinnile vastav bitt registris 1+1 (UIO sisendid) => 0
+				movf	Register275+.0,W		; analoogpinnile vastav bitt registris 1+1 (UIO sisendid) => 0
 				banksel	Register1
 				andwf	Register1+.1,F
 				banksel .0
 
 				movff	Register0+.1,WREG		; taastame UIO väljundite seisu vastava registri järgi
-				andwf	Register271+.1,W		; maskeerime ANA/digi oamdusega (digi=1)
+				andwf	Register275+.0,W		; maskeerime ANA/digi oamdusega (digi=1)
 				movwf	Registertemp7
 				andlw	0x0F
 				movwf	PORTA					
@@ -5357,6 +5978,34 @@ _send_1w_lp:    clrf    TEMP1            		; Clear work area
               	decfsz  TEMP0,F         		; 8 bitti ok ?
                	goto     _send_1w_lp      		; vara veel
              	return
+;;===============================================================================
+;; ******* saadab käsubiti I-nööbile *******
+;;===============================================================================
+;Sendbit_1wire:	btfsc	noints
+;				goto	sb1w1
+;				bcf	INTCON,GIE
+;				bcf		INTCON,PEIE			
+;sb1w1:			movwf   TEMP1
+;
+;              	bcf     _1WDAT	         		; madalax
+;              	btfsc   TEMP1,.0 
+;               	bsf     _1WDAT	        		; pulsi lõpp kui bitt oli 1
+;
+;;              	btfsc   TEMP1,.0 
+;;				goto	sb1wH
+;;              	bcf     _1WDAT	         		; saadame nulli
+;;				goto	sb1w2
+;;sb1wH:			bsf     _1WDAT	         		; saadame ühe
+;
+;sb1w2:			movlw	.58						; (Tslot + Trec) - Tlow1
+;				call	wait_x
+;	            bsf     _1WDAT        			; pulsi lõpp kui bitt oli 0
+;              	nop    							; Trec
+;				btfsc	noints
+;				return
+;				bsf		INTCON,PEIE			
+;				bsf	INTCON,GIE
+;	            return
 ;===============================================================================
 ; ******* saadab käsubiti I-nööbile *******
 ;===============================================================================
@@ -5365,18 +6014,38 @@ Sendbit_1wire:	btfsc	noints
 				bcf	INTCON,GIE
 				bcf		INTCON,PEIE			
 sb1w1:			movwf   TEMP1
-              	bcf     _1WDAT	         		; madalax
-              	btfsc   TEMP1,0 
-               	bsf     _1WDAT	        		; pulsi lõpp kui bitt oli 1
-				movlw	.58						; (Tslot + Trec) - Tlow1
+              	bcf     _1WDAT	         		; Write slot algab: madalax
+				call	w_1us					; ootab min 1us
+              	btfsc   TEMP1,.0 				; mida saata
+				goto	sb1wH
+              	bcf     _1WDAT	         		; saadame nulli
+				goto	sb1w2
+sb1wH:			call	w_1us					; ühe saatmisel venitame selguse mõttes veica
+				call	w_1us					
+				call	w_1us					
+				bsf     _1WDAT	         		; saadame ühe
+
+sb1w2:			movlw	.40;58					; Tslot=60us
 				call	wait_x
 	            bsf     _1WDAT        			; pulsi lõpp kui bitt oli 0
-              	nop    							; Trec
+				call	w_1us					; recovery 1us
 				btfsc	noints
 				return
 				bsf		INTCON,PEIE			
 				bsf	INTCON,GIE
 	            return
+;===============================================================================
+w_1us:			nop								; ootab min 1us
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				return
 ;===============================================================================
 ; ******* loeb vastusbaidi I-nööbist registrisse OneWireByte *******
 ;===============================================================================
@@ -5399,24 +6068,51 @@ Readbit_1wire:	btfsc	noints
 				goto	rb1w1
 				bcf	INTCON,GIE
 				bcf		INTCON,PEIE			
-rb1w1:			bcf    	_1WDAT	         		; taktipulss - madalax
-				nop
+rb1w1:;				bcf		TRIS_1WDAT
+			bcf    	_1WDAT	         		; taktipulss - madalax
+				call	w_1us					; ootab min 1us
 	            bsf    	_1WDAT	         		; taktipulss - kõrgex
 				bsf		TRIS_1WDAT
 	            clrf    TEMP1            		; Assume incomming bit is 0
-				movlw	.12						; oota 12uS
+				movlw	.7;12					; oota 13uS
 				call	wait_x
  	            btfsc   _1WDAT	         		; What are we receiving?
                 bsf     TEMP1,0			        ; must be a 1
-				movlw	.47						; oota 47uS
+				movlw	.31;47					; oota 48uS
 				call	wait_x
-              	movf    TEMP1,W
 				bcf		TRIS_1WDAT
+              	movf    TEMP1,W
+				call	w_1us					; ootab min 1us
 				btfsc	noints
 				return
 				bsf		INTCON,PEIE			
 				bsf	INTCON,GIE
 	            return
+;;===============================================================================
+;; ******* loeb vastusbiti I-nööbist *******
+;;===============================================================================
+;Readbit_1wire:	btfsc	noints
+;				goto	rb1w1
+;				bcf	INTCON,GIE
+;				bcf		INTCON,PEIE			
+;rb1w1:			bcf    	_1WDAT	         		; taktipulss - madalax
+;				nop
+;	            bsf    	_1WDAT	         		; taktipulss - kõrgex
+;				bsf		TRIS_1WDAT
+;	            clrf    TEMP1            		; Assume incomming bit is 0
+;				movlw	.12						; oota 12uS
+;				call	wait_x
+; 	            btfsc   _1WDAT	         		; What are we receiving?
+;                bsf     TEMP1,0			        ; must be a 1
+;				movlw	.47						; oota 47uS
+;				call	wait_x
+;              	movf    TEMP1,W
+;				bcf		TRIS_1WDAT
+;				btfsc	noints
+;				return
+;				bsf		INTCON,PEIE			
+;				bsf	INTCON,GIE
+;	            return
 ;===============================================================================
 ; Store_Bit võtab bitt A (bits.1) ja salvestab alasse work, offset rombit_idx
 ; bits.1 -> work0..work7(rombit_idx)
@@ -5616,124 +6312,112 @@ SetupFSR:                                 		; Setup FSR0L, TEMP1(byte offset), a
 ;===============================================================================
 ; ******* reseti taimerite asjad *******
 ;===============================================================================
-decrtmrs:		btfsc	reset1ena				; pingestamise viiteaeg juba läbi ?
-				goto	T1intr1end				; jah
-				movf	reset1strttmrH,W		; kas etteantud aeg = 0 ?
-				addlw	.0
-				btfss	ZERO
-				goto	rtmr1notnull
-				movf	reset1strttmrL,W
-				addlw	.0
-				btfsc	ZERO
-				goto	rtmr1z					; jah, viiteaeg oli = 0, siis ei ootagi
-rtmr1notnull:	decfsz	reset1strttmrL			; ei, pingestamisejärgne reset 1 viitetaimer alles käib
-				goto	T1intr2
-				movf	reset1strttmrH,W		; HIGH juba on  ?
-				addlw	.0
-				btfsc	ZERO
-				goto	rtmr1z					; jah, siis aeg täis
-				decf	reset1strttmrH,F
-			decf	reset1strttmrL,F
-				goto	T1intr2
-rtmr1z:			bsf		reset1ena				; reseti 1 generaator on nüüd enableeritud
-;				bsf		pank1
-;				movf	Register277+.1,W		; lae side kadumise viiteaeg
-;				bcf		pank1
-;				movwf	reset1dlytmr
+decrtmrs:
 T1intr1end:		btfsc	reset1pulseon			; reseti 1 pulss juba aktiivne ?
 				goto	T1intr1end1				; jah
-
-				movf	reset1dlytmr,W			; kas side viiteaeg anti = 0 ?
+				movf	reset1dlytmrH,W			; kas side viiteaeg anti = 0 ?
+				addlw	.0
+				btfss	ZERO
+				goto	sv9						; eip
+				movf	reset1dlytmrL,W
+				addlw	.0
+				btfss	ZERO
+				goto	sv9						; eip
+				goto	R1zero; sv10					; jah, siis on aeg oodatud !
+sv9:			decfsz	reset1dlytmrL			; ootame kannatlikult, ehk side taastub
+				goto	T1intr2					
+				movf	reset1dlytmrH,W			; HIGH juba on  ?
 				addlw	.0
 				btfsc	ZERO
-				goto	sv10					; jah, siis on aeg oodatud !
-
-				decfsz	reset1dlytmr			; ootame kannatlikult, ehk side taastub
-				goto	T1intr2					
-sv10:;			bsf		pank1
-				movf	Register277,W			; piisavalt InterNetita oldud: 
-;				bcf		pank1
-				movwf	reset1pulsetmr			; laeme pulsi kestuse
+				goto	sv10					; jah, siis aeg täis
+				decf	reset1dlytmrH,F
+				decf	reset1dlytmrL,F
+				goto	T1intr2
+sv10:			movff	Register277,WREG		; piisavalt InterNetita oldud: 
+				movwf	reset1pulsetmrH			; laeme pulsi kestuse
+				addlw	.0
+				btfss	ZERO					; nulline kestus tähendab, et pulssi ei tekitatagi !
+				goto	R1notzero
+				movff	Register277+.1,WREG	
+				movwf	reset1pulsetmrL		
 				addlw	.0
 				btfsc	ZERO					; nulline kestus tähendab, et pulssi ei tekitatagi !
 				goto	R1zero
-				bsf		reset1pulseon			; märgime ära
-;				bcf		reset1					; ja nüüd annab saapaga ... !
-			bcf		n_reset1					; inversioon
-R1zero:;			bsf		pank1
-				movf	Register277+.1,W		; taasta side kadumise viiteaeg
-;				bcf		pank1
-				movwf	reset1dlytmr
+R1notzero:		bsf		reset1pulseon			; märgime ära
+				bcf		n_reset1				; ja nüüd annab saapaga ... ! -> inversioonis
+R1zero:			movff	Register276,WREG		; taasta side kadumise viiteaeg
+				movwf	reset1dlytmrH
+				movff	Register276+.1,WREG
+				movwf	reset1dlytmrL
 				goto	T1intr2					
-T1intr1end1:	decfsz	reset1pulsetmr			; tixub pulsi kestust
+T1intr1end1:	decfsz	reset1pulsetmrL			; tixub pulsi kestust
 				goto	T1intr2					
-;				bsf		reset1					; aitab kah pexmisest...
-			bsf		n_reset1					; inversioon
+				movf	reset1pulsetmrH,W		; HIGH juba on  ?
+				addlw	.0
+				btfsc	ZERO
+				goto	sv11					; jah, siis aeg täis
+				decf	reset1pulsetmrH,F
+				decf	reset1pulsetmrL,F
+				goto	T1intr2
+sv11:			bsf		n_reset1				; aitab kah pexmisest... -> inversioonis
 				bcf		reset1pulseon			; märgime ära
-;				bsf		pank1
-				movf	Register277,W			; laeme uuesti pulsi kestuse
-;				bcf		pank1
-				movwf	reset1pulsetmr
-			
-T1intr2:		btfsc	reset2ena				; pingestamise viiteaeg juba läbi ?
-				goto	T1intr2end				; jah
-				movf	reset2strttmrH,W		; kas etteantud aeg = 0 ?
+				movff	Register277,WREG		; laeme uuesti pulsi kestuse
+				movwf	reset1pulsetmrH
+				movff	Register277+.1,WREG
+				movwf	reset1pulsetmrL
+;***********************
+T1intr2:		btfsc	reset2pulseon			; reseti 2 pulss juba aktiivne ?
+				goto	T2intr1end1				; jah
+				movf	reset2dlytmrH,W			; kas side viiteaeg anti = 0 ?
 				addlw	.0
 				btfss	ZERO
-				goto	rtmr2notnull
-				movf	reset2strttmrL,W
+				goto	sv29					; eip
+				movf	reset2dlytmrL,W
+				addlw	.0
+				btfss	ZERO
+				goto	sv29					; eip
+				goto	R2zero;sv20					; jah, siis on aeg oodatud !
+sv29:			decfsz	reset2dlytmrL			; ootame kannatlikult, ehk side taastub
+				return					
+				movf	reset2dlytmrH,W			; HIGH juba on  ?
 				addlw	.0
 				btfsc	ZERO
-				goto	rtmr2z					; jah, viiteaeg oli = 0, siis ei ootagi
-rtmr2notnull:	decfsz	reset2strttmrL			; ei, pingestamisejärgne reset 2 viitetaimer alles käib
+				goto	sv20					; jah, siis aeg täis
+				decf	reset2dlytmrH,F
+				decf	reset2dlytmrL,F
 				return
-				movf	reset2strttmrH,W		; HIGH juba on  ?
+sv20:			movff	Register279,WREG		; piisavalt InterNetita oldud: 
+				movwf	reset2pulsetmrH			; laeme pulsi kestuse
 				addlw	.0
-				btfsc	ZERO
-				goto	rtmr2z					; jah, siis aeg täis
-				decf	reset2strttmrH,F
-			decf	reset2strttmrL,F
-				return
-rtmr2z:			bsf		reset2ena				; reseti 2 generaator on nüüd enableeritud
-;				bsf		pank1
-;				movf	Register279+.1,W		; lae side kadumise viiteaeg
-;				bcf		pank1
-;				movwf	reset2dlytmr
-T1intr2end:		btfsc	reset2pulseon			; reseti 1 pulss juba aktiivne ?
-				goto	T1intr2end1				; jah
-
-				movf	reset2dlytmr,W			; kas side viiteaeg anti = 0 ?
-				addlw	.0
-				btfsc	ZERO
-				goto	sv20					; jah, siis on aeg oodatud !
-
-				decfsz	reset2dlytmr			; ootame kannatlikult, ehk side taastub
-				return				
-
-sv20:;			bsf		pank1
-				movf	Register279,W			; piisavalt IntereNetita oldud: laeme pulsi kestuse
-;				bcf		pank1
-				movwf	reset2pulsetmr
+				btfss	ZERO					; nulline kestus tähendab, et pulssi ei tekitatagi !
+				goto	R2notzero
+				movff	Register279+.1,WREG	
+				movwf	reset2pulsetmrL		
 				addlw	.0
 				btfsc	ZERO					; nulline kestus tähendab, et pulssi ei tekitatagi !
 				goto	R2zero
-				bsf		reset2pulseon			; märgime ära
-				bsf		PWRSW					; ja nüüd annab saapaga ... !
-
-R2zero:;			bsf		pank1
-				movf	Register279+.1,W		; taasta side kadumise viiteaeg
-;				bcf		pank1
-				movwf	reset2dlytmr
-
+R2notzero:		bsf		reset2pulseon			; märgime ära
+				bcf		PWRSW					; ja nüüd annab saapaga ... ! -> inversioonis
+R2zero:			movff	Register278,WREG		; taasta side kadumise viiteaeg
+				movwf	reset2dlytmrH
+				movff	Register278+.1,WREG	
+				movwf	reset2dlytmrL
 				return					
-T1intr2end1:	decfsz	reset2pulsetmr			; tixub pulsi kestust
+T2intr1end1:	decfsz	reset2pulsetmrL			; tixub pulsi kestust
 				return					
-				bcf		PWRSW					; aitab kah pexmisest...
+				movf	reset2pulsetmrH,W		; HIGH juba on  ?
+				addlw	.0
+				btfsc	ZERO
+				goto	sv21					; jah, siis aeg täis
+				decf	reset2pulsetmrH,F
+				decf	reset2pulsetmrL,F
+				return
+sv21:			bsf		PWRSW					; aitab kah pexmisest... -> inversioonis
 				bcf		reset2pulseon			; märgime ära
-;				bsf		pank1
-				movf	Register279,W			; laeme uuesti pulsi kestuse
-;				bcf		pank1
-				movwf	reset2pulsetmr
+				movff	Register279,WREG		; laeme uuesti pulsi kestuse
+				movwf	reset2pulsetmrH
+				movff	Register279+.1,WREG	
+				movwf	reset2pulsetmrL
 				return
 ;===============================================================================
 ; ******************* DSxxxx funktsioonid **************************************
@@ -5741,7 +6425,7 @@ T1intr2end1:	decfsz	reset2pulsetmr			; tixub pulsi kestust
 ;===============================================================================
 ; ******* loeb andurilt näidu ja käivitab järgmise mõõtmise *******
 ;===============================================================================
-GetTemp:		decfsz	_10sekunditmr
+GetTemp:		decfsz	_10sekunditmr			; tegelikult 1sekund !
 				goto	GetTemp_end
 				movlw	_10sekundiaeg
 				movwf	_10sekunditmr
@@ -6205,7 +6889,8 @@ wait:			movlw	0xFF
 wait_x:	;		bsf		pank
 				movwf	PR2
 ;				bcf		pank
-			movlw	0x01					; T2 periood 1uS, seisma!
+;			movlw	0x01					; T2 periood 1uS, seisma!
+			movlw	0x02					; T2 periood 1uS, seisma! - > nüüd 1:16 prescaler (oli 1:4)
 			movwf	T2CON
 				clrf	TMR2
 				bcf		PIR1,TMR2IF
@@ -6240,17 +6925,17 @@ init_a1:		movlw	mõõtmisi
 
 init:
 ; **** WDT **** 
+				clrf	INTCON
 				clrf	WDTCON
 				clrwdt                    		; WDT nullida 
 ; **** konf ****
 				bsf		INTCON2,.7				; B-pullupid maha
 ;*** Taimer 0 *****
-				movlw	B'01000011'				; 8 bitine, 1:16 prescaler T0-le, taimerina, seisma !
-;				movlw	0x47					; 1:256 prescaler T0-le, seisma, 8-bitine
+;				movlw	B'01000011'				; 8 bitine, 1:16 prescaler T0-le, taimerina, seisma !
+				movlw	B'01000101'				; 8 bitine, 1:64 prescaler T0-le, taimerina, seisma !
 				movwf	T0CON					
 				movlw	T0reso					; lae taimer 0 (katkestus iga 250 us tagant)
 				movwf	TMR0L
-				bcf		INTCON,TMR0IF
 ; **** komparaatorid ****
 				BANKSEL CM1CON 
 				movlw 	0x00					; analoog komparaatorid välja
@@ -6262,7 +6947,8 @@ init:
 				MOVLW 	B'00110000' 			; Selects the special trigger from the ECCP1,Vref=4,1V,A/D VREF-=0,Analog Negative Channel=GND
 				MOVWF 	ADCON1 					
 				BANKSEL ADCON2 
-				MOVLW 	B'10111010' 			; right justified,-, 20 TAD, FOSC/32
+;				MOVLW 	B'10111010' 			; right justified,-, 20 TAD, FOSC/32
+				MOVLW 	B'10111110' 			; right justified,-, 20 TAD, FOSC/64
 				MOVWF 	ADCON2 					
 				BANKSEL ADCON0 
 				MOVLW 	chan1		 			; kanal 1
@@ -6294,10 +6980,14 @@ init:
 				movwf 	PORTD 
 				movlw	0x08					; port sellisesse lähteseisu
 				movwf 	PORTE 
-;	bsf		PWRSW					
 ;********* Vahipeni ketti **************
 				clrwdt                    		; WDT nullida 
 				call	ajupesu					; mälu killimine
+;>>> CHG
+				banksel	EECON1
+				clrf	EECON1
+				banksel	.0
+;>>> CHG
 				call	Read_Setup				; analoogkanali portide setup jms				
 ;--- USART -------------------- 				; USARTi häälestus (SYNC = 0, BRGH = 0, BRG16 = 1)
 ; Register 273
@@ -6323,14 +7013,6 @@ init:
 				bcf		PIE1,TMR2IE
 				clrf	TMR2
 				bcf		PIR1,TMR2IF
-;;--- T4 viitetaimeri reload --------			; lae viidete taimer
-;				movlw	0x0B					; T4 periood 1,1mS, seisma!
-;				movwf	T4CON
-;				movlw	0xFF					
-;				movwf	PR4
-;				bcf		PIE4,TMR4IE
-;				clrf	TMR4
-;				bcf		PIR4,TMR4IF
 ;--- pisike viide maha rahunemiseks ----
 				movlw	.10						; rahuneme maha 1 s jooxul
 				movwf	_10sekunditmr
@@ -6347,22 +7029,19 @@ relax1:			call	wait					; 375 uS
 				movwf	PIE1
 				banksel	.0
 				movf	PORTB,W				
-				movlw	B'01001000'				; Perifeeria intsid lubada, samuti RBIE int
-				movwf	INTCON
 				movlw	B'00010000'				; katskestusi ei ole esinenud, RS232 porti ei puudu: read-only
 				movwf	PIR1	
 				banksel	IOCB
 				movlw	0xFF
 				movwf	IOCB					; lubame kõik pordi B muutuse katckestused
 				banksel	.0
-				bcf		INTCON,T0IE
 				bcf		INTCON,PEIE	
-
 				bsf		CCPTMRS,C2TSEL		
 ;--- Variaablid ----------------				; muu pudi
 				movf	DinPort,W
 				movwf	dinpress
 				comf	DinPort,W
+	movf	DinPort,W
 				movwf	Register1
 				movlw	0x00
 				movwf	dinsticky
@@ -6375,10 +7054,13 @@ relax1:			call	wait					; 375 uS
 				movwf	sekunditmr
 				movlw	0xFF
 				movwf	lastinputs				; PORTB sisendite eelmine seis oli 0xFF			
+				movwf	lastinputs1				; anapordi sisendite eelmine seis oli 0xFF			
+				movwf	lastinputs2		
 				movlw	_10sekundiaeg
 				movwf	_10sekunditmr
 				movlw	.4						; 1ms loendi
 				movwf	_1mscount
+
 				LFSR	.1,Dallas1				; DS1820 kontrollbaidid näidaku et andurid puuduvad (0x1000)
 				movlw	.9
 				movwf	DS1820found
@@ -6398,6 +7080,11 @@ ds2438loop:		movlw	0x10
 				movwf	POSTINC1
 				decfsz	DS1820found
 				goto	ds2438loop
+				movff	Register699+.1,WREG		; kas detectida või lugeda eepromist?
+				sublw	.1
+				btfss	ZERO
+				goto	discovery				; vaatame ise järgi
+				goto	load_dallas_adr			; lae aadressid eepromist
 
 ;--- Dallase andurite avastamine ----------------
 discovery:		clrwdt
@@ -6410,14 +7097,21 @@ discovery:		clrwdt
 				clrwdt                    		; WDT nullida 
 				bsf		noints
 ;	      goto    _search_end     		; DEBUG 1W andureid ei ole
-
-
 _search_next:	call    Search_1Wire     		; käse otsida              
 				clrwdt                    		; WDT nullida 
+;	movf	return_value,W
+;	bsf Dir
+;	call	SendCHAR
+;	bcf Dir
+
             	btfss   return_value,0  		; Oli midagi ?
 	            goto    _search_end     		; sitte mittagi...
 				bcf		dallas					; kui dallas=1 siis DS2438
 				LFSR	.1,work7				; 8. bait on family code. DS18B20=0x28, DS2438=0x26. Selle järgi määrame mäluaadressi kuhu ID salvestada
+				movf	INDF1,W					; väidab, et leidis miskit aga kui liin oli lühises ?
+				addlw	.0
+				btfsc	ZERO
+	            goto    _search_end     		; perset, Roosi, oligi lühis !
 				movf	INDF1,W
 				sublw	DS1820ID
 				btfss	ZERO
@@ -6475,7 +7169,6 @@ disc_end:		btfss	temper					; DS1820-e arv täis ?
 				goto	_search_next			; eip, otci veel
 				btfss	nomoreds2438			; aga DS2438 ?
 				goto	_search_next			; eip, otci veel
-
 disc_end1:		call	Start_temp				; kõik andurid mõõtma ja kohe!
 				bcf		_1WSPU					; tugev toide peale 
 				movf    DS1820found,W	
@@ -6500,8 +7193,11 @@ _search_end:	movf    DS1820found,W			; enam ei leia kuid kas enne leiti miskit ?
 				movlw	sekundiaeg
 				movwf	sekunditmr
 _search_done:	clrwdt                    		; WDT nullida 
-				clrf	Measflags
-;				bcf		noints
+				call	save_dallas_adr			; salvesta leitu eepromi
+				clrwdt
+_search_done1:	clrf	Measflags
+			bcf		noints
+				call	reset_ser1				; sidetaimeri reload
 				return
 ;________________________________________________________
 ajupesu:		LFSR	.0,.0					; ajupesu
@@ -6514,30 +7210,368 @@ kill_mem:		clrf	POSTINC0
 				clrf	RegX+.1
 				return
 ;===============================================================================
+;*************** Laeb 1-wire aadressid eepromist *******************************
+;===============================================================================
+load_dallas_adr:bsf		noints
+				movlw	.72
+				movwf	countL
+				LFSR	.0,Dallas1wa
+				movlw	LOW(e_ds1820_1)			; loe DS1820 aadressid
+				banksel	EEADR
+				movwf	EEADR
+				clrf	EEADRH
+load_dallas_1:	call	Read_EEPROM					
+				movff	WREG,POSTINC0
+				decfsz	countL
+				goto	load_dallas_1
+				call	Read_EEPROM				; DS1820 hulk			
+				movff	WREG,DS1820found
+				movlw	.72
+				movwf	countL
+				LFSR	.0,DS24381wa
+				movlw	LOW(e_ds2438_1)			; loe DS2438 aadressid
+				banksel	EEADR
+				movwf	EEADR
+				clrf	EEADRH
+load_dallas_2:	call	Read_EEPROM					
+				movff	WREG,POSTINC0
+				decfsz	countL
+				goto	load_dallas_2
+				call	Read_EEPROM				; DS1820 hulk			
+				movff	WREG,DS2438found
+				goto	load_d1
+
+load_dallas_3:	call	Start_temp				; kõik andurid mõõtma ja kohe!
+				bcf		_1WSPU					; tugev toide peale 
+				movf    DS1820found,W	
+				andlw	0x0F					; tarbetu küll aga las olla...		
+				movwf	DallasState
+				movlw	sekundiaeg
+				movwf	sekunditmr
+				goto	load_dallas_4			; lõpetame jama...
+
+load_d1:		call    Reset_1wire
+				movf    DS1820found,W			; enam ei leia kuid kas enne leiti miskit ?
+				addlw	.0
+				btfss	ZERO
+				goto	load_dallas_3			; midagi leiti, stardime temp. mõõtmised
+				movf    DS2438found,W			; aga DS2438 ?
+				addlw	.0
+				btfsc	ZERO
+				goto	load_dallas_4			; midagi ei leitud
+				bcf		_1WSPU					; tugev toide peale 
+				swapf    DS2438found,W			; leidsime vaid DS2438 kivid
+				andlw	0xF0					; tarbetu küll aga las olla...
+				addlw	.4						; alustame seisust 4		
+				movwf	DallasState
+				movlw	sekundiaeg
+				movwf	sekunditmr
+load_dallas_4:	clrwdt                    		; WDT nullida 
+			bcf		nomoreds2438			
+			bcf		temper					
+				goto	_search_done1
+;===============================================================================
+;*************** Salvestab 1-wire aadressid eepromi ****************************
+;===============================================================================
+save_dallas_adr:movlw	.72
+				movwf	countL
+				LFSR	.0,Dallas1wa
+				movlw	LOW(e_ds1820_1)			; loe DS1820 aadressid
+				banksel	EEADR
+				movwf	EEADR
+				clrf	EEADRH
+save_dallas_1:	movff	POSTINC0,WREG
+				call	Wr_EEPROM					
+				decfsz	countL
+				goto	save_dallas_1
+				movff	DS1820found,WREG		; DS1820 hulk
+				call	Wr_EEPROM					
+				movlw	.72
+				movwf	countL
+				LFSR	.0,DS24381wa
+				movlw	LOW(e_ds2438_1)			; loe DS2438 aadressid
+				banksel	EEADR
+				movwf	EEADR
+				clrf	EEADRH
+save_dallas_2:	movff	POSTINC0,WREG
+				call	Wr_EEPROM					
+				decfsz	countL
+				goto	save_dallas_2
+				movff	DS2438found,WREG		; DS2438 hulk
+				call	Wr_EEPROM					
+				return
+;===============================================================================
+;************************ Bootloaderi koodijupid *******************************
+;===============================================================================
+				org	0xEA00
+ErrorLoader:
+				org	0xF000
+BootLoader:
+BootInts:	    movwf   W_Temp           		; Seivi kontekst        
+				swapf   STATUS,W         
+				movwf   S_Temp   
+				movff	FSR0L,FSRtmpL
+				movff	FSR0H,FSRtmpH
+				banksel	.0
+ 				btfsc	PIR1,TMR1IF				; Taimer 1'e katckestus?
+				call	bT1int
+				btfsc	PIR1,RC1IF				; Seriali katckestus?
+				call	bSerInt					
+				movff	FSRtmpL,FSR0L
+				movff	FSRtmpH,FSR0H
+				swapf   S_Temp,W         
+				movwf   STATUS           		; taasta STATUS         
+				swapf   W_Temp,F         
+				swapf   W_Temp,W         		; Taasta W         
+				retfie                   	
+;===============================================================================
+;*********************** Taimer 1'e INT ****************************************
+;===============================================================================
+; * T1 on süsteemi taimer intervalliga 10 ms.
+bT1int:			bcf     PIR1,TMR1IF    			; katkestuse nõue maha 
+				movlw	T1resoL					; lae taimer 1 uuesti
+				movwf	TMR1L
+				movlw	T1resoH
+				movwf	TMR1H
+;********* Vahipeni ketti **************
+				clrwdt                    		; WDT nullida 
+;**** sekundi aja taimerid ****
+				decfsz	sekunditmr
+				goto	bT1int_1
+				movlw	sekundiaeg
+				movwf	sekunditmr
+;**** sidepaketi taimer ****
+bT1int_1:		btfss	SerialTimerOn			; seriali taimer käib?
+				goto	bT1int_2
+				decfsz	serialtimer				; aeg täis?
+				goto	bT1int_2
+				call	breset_ser
+				bcf		PIR1,RC1IF				; katkestuse nõue maha
+bT1int_2:
+				return
+;===============================================================================
+; ******* Seriali INT *******
+;===============================================================================
+bSerInt:	
+;********* Vahipeni ketti **************
+				clrwdt                    		; WDT nullida 
+				bcf		PIR1,RC1IF				; katkestuse nõue maha
+				banksel	RCSTA1
+				movf	RCSTA1,W				; oli viga?
+				banksel	.0
+				andlw	.6						; Viga vastuvõtul? Maskeeri tarbetud staatuse bitid
+				btfss	ZERO
+				goto	breset_ser2				; oli, alusta uuesti
+bmodbus_rcv:		movf	bytecnt,W				; kontrolli puhvri piire
+				sublw	RSBufLen-.1
+				btfss	CARRY
+				goto	breset_ser2				; liiga pikk mess või miskit sassis, reset!
+				bsf		SerialTimerOn	
+				banksel	RCREG1
+				movf	RCREG1,W
+				banksel .0
+				movwf	Char
+				LFSR	.0,Puhver				; arvutame baidi salvestamise koha vastuvõtupuhvris
+				movf	bytecnt,W
+				bcf		CARRY
+				addwf	FSR0L,F
+				btfsc	CARRY
+				incf	FSR0H,F
+				movf	Char,W
+				movwf	INDF0					; salvesta bait
+				incf	bytecnt,F
+				movf	bytecnt,W				; mitmes bait oli
+				sublw	.1
+				btfsc	ZERO
+				goto	modb_r0					; esimene
+				movf	bytecnt,W				; äkki oli teine (käsk) ?
+				sublw	.2
+				btfss	ZERO
+				goto	bmodb_r1					; ei, päris mitmes oli...
+				movf	Char,W
+				sublw	modbus_cnf
+				btfss	ZERO
+				goto	modb_r00				; ei, äkki wr_multi ?
+				movlw	.12;7
+				movwf	countL
+				goto	bRREnd1					; jääb kuuldele...
+bmodb_r00:		movf	Char,W
+				sublw	modbus_wrmulti
+				btfss	ZERO
+				goto	bmodb_r1					; ei, siis ei näpi
+				movlw	.7
+				movwf	countL
+				goto	bRREnd1					; jääb kuuldele...
+
+
+bmodb_r0:
+bmodb_r12:
+bmodb_r1:
+bmodb_r14:
+bmodb_r15:
+bmodb_r16:
+bmodb_r17:		movf	bytecnt,W
+				subwf	countL,W				; saadetis käes (countL-s oodatav baitide arv)?
+				btfss	ZERO
+				goto	bRREnd1					; eip !
+				movff	Puhver+.1,WREG
+				sublw	modbus_wrmulti			; kas oli käsk 0x10 (kirjuta mitu reg. korraga)?
+				btfss	ZERO
+				goto	bmodb_r2					; ei, pakett käes, kontrolli summat
+				btfsc	cmd10
+				goto	bmodb_r2
+				movff	Puhver+.6,WREG			; jah, loeme saadetavate baitide arvu ja ootame nende saabumist
+				addlw	.2
+				addwf	countL,F
+				bsf		cmd10
+				goto	bRREnd1					; jääb kuuldele...
+
+bmodb_r2:		movlw	0xFF					; pakett käes, kontrollime
+				movwf	_RS485chkH				; valmistume kontrollsumma arvutamiseks	
+				movwf	_RS485chk
+				decf	countL,F
+				decf	countL,W
+				movwf	bytecnt
+				LFSR	.0,Puhver				; kontrollime summat
+
+;				bcf		Dir						; lisa Dir signaal nulli
+;				bcf		PIR3,CCP2IF
+;				bsf		PIE3,CCP2IE				; ja lubame jälle sellise tekitamise
+
+bmodb_r3:		movf	INDF0,W
+				call	bmb_crc16				; kontrollsummeeri
+				incf	FSR0L,F
+				decfsz	 bytecnt
+				goto	bmodb_r3
+				movf	_RS485chk,W				; kontroll
+				subwf	INDF0,W
+				btfss	ZERO
+				goto	breset_ser2				; viga
+				incf	FSR0L,F
+				movf	_RS485chkH,W			; kontroll
+				subwf	INDF0,W
+				btfss	ZERO
+				goto	breset_ser2				; viga, eksiteerib via reset_ser
+				bsf		cmd_ok					; aga märgi ära, et pakett oli ok
+				bcf		SerialTimerOn			; taimer seisma
+				banksel	PIE1
+				bcf		PIE1,RC1IE				; enne uut käsku vastuvõtu ei võta kuni senine täidetud
+				banksel	.0
+				return
+;===============================================================================
+breset_ser2:		goto	breset_ser
+breset_ser1:;		call	reload_side				; sidetaimeri reload
+breset_ser:		clrf	bytecnt					; - baitide loendi
+				bcf		SerialTimeOut			
+				bcf		SerialTimerOn			; taimer seisma
+				movlw	serialtime
+				movwf	serialtimer
+				banksel	RCSTA1
+				bcf		RCSTA1,CREN
+				bsf		RCSTA1,CREN
+				banksel	RCREG1
+				movf	RCREG1,W
+				banksel	.0
+				movlw	.8						; ootame 8 baidist paketti
+				movwf	countL
+				bcf		cmd10
+				bcf		cmd_ok
+;				bcf		Dir						; lisa Dir signaal nulli
+;				bcf		PIR3,CCP2IF
+;				bsf		PIE3,CCP2IE				; ja lubame jälle sellise tekiamise
+				return
+bRREnd1:			movlw	serialtime				; relae ootetaimer
+				movwf	serialtimer
+				return
+;===============================================================================
+; MB_CRC16 -	Will calculate 16bit CRC for MODBUS RTU Packets
+;
+;		Input: 	Byte for CRC in W
+;		Output:	Original byte in W, 
+;			CRC16_HI and CRC16_LO new value of CRC16
+;===============================================================================
+bmb_crc16:		movwf	mb_del1
+				movwf	mb_temp2				; store W
+				movlw	.8						; 8 bits
+				movwf	mb_temp1
+				movf	mb_temp2,W				; fetch W
+bCrc_Get_Bit:	rrcf		mb_temp2,F				; bit in C
+				movf	mb_temp2,W				; value to W
+				bnc	bcrc1;skpnc
+				goto	bCrc_In_1
+bcrc1:			btfss	_RS485chk,.0			; lowest bit set ?
+				goto	bCrc_Cont				; goto count with C=0
+				bsf		CARRY
+				goto	bCrc_Cont				; goto count with C=1
+bCrc_In_1:		btfsc	_RS485chk,.0			; lowest bit zero ?
+				bcf		CARRY					; if no, C=0 = complement
+bCrc_Cont:		bc		bcrc2;skpc
+				goto	bCrc_Shift				; if C=0 only shift
+bcrc2:			btfsc	_RS485chkH,.6			; complement 15th bit of CRC
+				goto	bCrc1
+				bsf		_RS485chkH,.6			; if clear, set
+				goto	bCrc2
+bCrc1:			bcf		_RS485chkH,.6			; if set, clear
+bCrc2:			btfsc	_RS485chk,.1			; complement 2nd bit of CRC
+				goto	bCrc3
+				bsf		_RS485chk,.1
+				goto	bCrc_Shift
+bCrc3:			bcf		_RS485chk,.1
+bCrc_Shift:		rrcf		_RS485chkH,F			; 16bit rotate
+				rrcf		_RS485chk,F
+				movf	mb_temp2,W
+				decfsz	mb_temp1,F
+				goto	bCrc_Get_Bit
+				movf	mb_del1,W				; fetch the original byte
+				return
+;===============================================================================
 ; ***************************** EEPROM *****************************************
 ;===============================================================================
 ; **** seadme ID ****
  code_pack 0xF00000								; EEPROM'i sisu 
 e_ADR:						db 0x01				; R274 modbussi aadress
-e_IDH:						db 0x82				; R258 vidina unikaalne ID, bait 1
-e_IDL:						db 0x01				; R259 vidina unikaalne ID, bait 2
+e_IDH:						db 0x00				; R258 vidina unikaalne ID, bait 1
+e_IDL:						db 0x00				; R259 vidina unikaalne ID, bait 2
 e_PUa:						db 0x00				; pullup mask ehk sisuliselt väljundite seis stardil sest PUsid juhitakse väljunditega
 e_PUd:						db 0x00				; R272H analoog,R272L digi: pullup mask ehk sisuliselt väljundite seis stardil sest PUsid juhitakse väljunditega
-e_ser:						db 0x1A				; R273 seriali ja sisendite lugemise parameetrid: vaata allpool
-e_IOD:						db 0x00				; R275 ANA-pordi (UIO) suund, 1= väljund, bitthaaval)
-e_anadigi:					db 0x00;C0				; R271L analoogpordi seisund stardil - analoog või digi. 1= digi
+e_ser:						db 0x02				; R273 seriali ja sisendite lugemise parameetrid: vaata allpool
+e_IOD:						db 0x00				; R275L ANA-pordi (UIO) suund, 1= väljund, bitthaaval)
+e_anadigi:					db 0xFF				; R275H analoogpordi seisund stardil - analoog või digi. 1= digi
 e_devtype					db 0xF1				; R256
-e_firmwarenr				db 0x02,0x13		; R257H ja L: F/w HIGH ja LOW
-e_reset1:					db 0x02,0x58,0x05,0x1E		; R276,R277 60 sekundit, 5 sekund, 30 sekundit
-e_reset2:					db 0x02,0x58,0x05,0x64		; R278,R279 600 sekundit, 5 sekund, 64 sekundit
-e_xor:						db 0xFF				; R271H sellega XORitakse ANA-pordi sisendit (et teha juhitav aktiivne HI/LO
-e_ADC:						db 0x30				; R270 ADC Vref-i konf. Vaid bitid 3,4,5 mõjuvad (Selects the special trigger from the ECCP1,Vref=Avdd,A/D VREF-=0,Analog Negative Channel=GND)
+e_firmwarenr				db 0x02,0x33		; R257H ja L: F/w HIGH ja LOW
+e_reset1:					db 0x00,0x00,0x00,0x00		; R276,R277 180 sekundit viidet, 5 sekundit pulsi kestust
+e_reset2:					db 0x00,0x00,0x00,0x00		; R278,R279 - sama
+e_xor:						db 0x00				; R271H sellega XORitakse ANA-pordi sisendit (et teha juhitav aktiivne HI/LO)
+e_xorD:						db 0x00				; R271L sellega XORitakse DIGI-pordi sisendit (et teha juhitav aktiivne HI/LO)
+e_ADC:						db 0x30				; R270L ADC Vref-i konf. Vaid bitid 3,4,5 mõjuvad (Selects the special trigger from the ECCP1,Vref=Avdd,A/D VREF-=0,Analog Negative Channel=GND)
+e_pwm:						db 0x00				; R270H bitt 0 =1 -> pwm lubatud. Enam seda ei arvesta !
 e_pwmperiod:				db 0x00,0x00		; R150 ehk PWMi periood
 e_pwmconf:					db 0x00,0x00		; R151 ehk PWMi konf - kui bitt=1 siis see kanal on PWM
+e_reg699:					db 0x00,0x00		; kui 1, loetakse 1-juhtme aadressid EEPROMist
+e_ds1820_1:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_2:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_3:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_4:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_5:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_6:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_7:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_8:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820_9:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds1820count:				db 0x00
+e_ds2438_1:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_2:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_3:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_4:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_5:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_6:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_7:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_8:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438_9:					db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+e_ds2438count:				db 0x00
 ; serialport:
 ;------------
 ; b0,1,2 - kiirus, default 19200 (010)
-; b3 - debounce kõigile sisenditele, default: ON
+; b3 - debounce kõigile sisenditele, default: ON (=0)
 ; b4 - sticky bitt kõigile sisenditele, default: OFF
 ; b5 - wiegand B lubatud (PORTB,4 ja 5)
 ; b6 - wiegand A lubatud (PORTB,6 ja 7)

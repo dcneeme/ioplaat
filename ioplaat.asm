@@ -210,6 +210,7 @@
 ; 18.10.: 1W andurite loendamise piiri viga - oleks lugenud 18-ni. Fixed. Ver.: 0x10
 ; 19.10.: reset_pwm ei lülitanud TMR0 välja. Testida ! Ver 0x11. 
 ; 20.10.: TMR0 siiski pidi käima sest muidu ei toimi 1-impulsid. Stardil Keelasin PEIE, stardib stabiilsemalt küll! (v.: 0x02 0x11)
+; 24.10.: viga reg 0, 1 lugemisel (mujal ka) - enne adr arvutamist puhvris (rlcf) tuli Cy nullida ! Ver 02, 12
 ;===============================================================================
 ;=============================================================================== 
 ;*********************** Raudvärk **********************************************
@@ -2190,14 +2191,14 @@ b:; bsf Dout1
 	nop
 	nop
 	nop
-	movff	Register274+.1,WREG		; 1. bait on slave aadress. Kas jutt mulle ?
-				call	SendCHAR
+;	movff	Register274+.1,WREG		; 1. bait on slave aadress. Kas jutt mulle ?
+;				call	SendCHAR
 	nop
 	nop
 	nop
 	nop
-	movf INDF0,W
-				call	SendCHAR
+;	movf INDF0,W
+;				call	SendCHAR
 	nop
 	nop
 	nop
@@ -2327,6 +2328,7 @@ mbr1:			bcf		writeit					; oli lugemine, ei ole vaja kirjutada
 				goto	mbr2					; jah, FSR0 on juba laetud
 				LFSR	.0,Register0
 				movff	m_radrL,serpartmp
+	bcf	CARRY
 				rlcf	serpartmp,W				; liidame puhvri alguse (aadress *2)
 				addwf	FSR0L,F
 				btfsc	CARRY	
@@ -4983,6 +4985,19 @@ reset_pwm:		movff	Register150+.0,pwmtmp+.1; pertick'is on periood*4 sammu
 				btfss	ZERO
 				goto	reset_pwm1
 		bsf		T0CON,TMR0ON
+;>>>CHG<<<
+; siin tahetaxe et pulsside kestused ka nullitax. Teeme nii, kliendi püha soov...
+				LFSR	.0,pwm0set				; nulli pulsside kestused. Tööregistrid jäävad kunix pulsid lõpvad.
+;				LFSR	.1,pwm0work
+				movlw	.16	
+				movff	WREG,_1mscount			; ajutine loendi
+res_pulse:		clrf	POSTINC0
+;				clrf	POSTINC1
+				decfsz	_1mscount
+				goto	res_pulse
+				movlw	.4						; taasta 1ms loendi
+				movwf	_1mscount
+;>>>CHG<<<
 				goto	rp1
 reset_pwm1:		bsf		T0CON,TMR0ON			; PWMi taimer käima
 reset_pwm2:		movff	pwmtmp+.0,masterpertick+.0
@@ -6512,7 +6527,7 @@ e_ser:						db 0x1A				; R273 seriali ja sisendite lugemise parameetrid: vaata a
 e_IOD:						db 0x00				; R275 ANA-pordi (UIO) suund, 1= väljund, bitthaaval)
 e_anadigi:					db 0x00;C0				; R271L analoogpordi seisund stardil - analoog või digi. 1= digi
 e_devtype					db 0xF1				; R256
-e_firmwarenr				db 0x02,0x11		; R257H ja L: F/w HIGH ja LOW
+e_firmwarenr				db 0x02,0x13		; R257H ja L: F/w HIGH ja LOW
 e_reset1:					db 0x02,0x58,0x05,0x1E		; R276,R277 60 sekundit, 5 sekund, 30 sekundit
 e_reset2:					db 0x02,0x58,0x05,0x64		; R278,R279 600 sekundit, 5 sekund, 64 sekundit
 e_xor:						db 0xFF				; R271H sellega XORitakse ANA-pordi sisendit (et teha juhitav aktiivne HI/LO
